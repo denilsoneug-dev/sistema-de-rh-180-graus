@@ -3,10 +3,14 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPerfil } from "@/lib/auth";
 import { editarEquipe, desligarEquipe, atualizarStatusBonus } from "@/app/actions/equipe";
-import { formatarCpf, formatarTelefone } from "@/lib/cpf";
+import { formatarTelefone, cpfPorPapel } from "@/lib/cpf";
 import { STATUS_EQUIPE_LABELS, STATUS_BONUS_LABELS, fmtData, fmtMoeda } from "@/lib/constants";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { Observacoes } from "@/components/Observacoes";
+import { ResumoRequisitos } from "@/components/ResumoRequisitos";
+import { EditarRequisitos } from "@/components/EditarRequisitos";
+import { mapResumosPorEquipe } from "@/lib/requisitos";
+import { salvarRequisitosEquipe } from "@/app/actions/requisitos";
 
 export const dynamic = "force-dynamic";
 
@@ -38,12 +42,16 @@ export default async function EquipeDetalhe({ params }: { params: Promise<{ id: 
     .select("*").eq("entidade_tipo", "equipe").eq("entidade_id", id)
     .eq("apagado", false).order("criado_em", { ascending: false });
 
+  // Requisitos derivados da ficha de origem (se o membro veio de processo seletivo)
+  const resumoMap = await mapResumosPorEquipe(supabase, [m]);
+  const resumoReq = resumoMap.get(m.id) ?? null;
+
   return (
     <div className="space-y-4 max-w-3xl">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold">{m.nome}</h1>
-          <p className="text-sm text-gray-500">{m.cargo} · CPF {formatarCpf(m.cpf)} · {formatarTelefone(m.telefone)}</p>
+          <p className="text-sm text-gray-500">{m.cargo} · CPF {cpfPorPapel(m.cpf, acessoTotal)} · {formatarTelefone(m.telefone)}</p>
           <span className="badge bg-gray-100 text-gray-700 mt-1">{STATUS_EQUIPE_LABELS[m.status as string]}</span>
         </div>
         <a className="btn-secondary" href={`/api/pdf/equipe/${m.id}`} target="_blank">Exportar PDF</a>
@@ -67,6 +75,13 @@ export default async function EquipeDetalhe({ params }: { params: Promise<{ id: 
           </p>
         )}
       </div>
+
+      <ResumoRequisitos
+        variante="detalhado"
+        resumo={resumoReq}
+        semFichaMsg="Requisitos não informados porque este membro foi cadastrado diretamente na equipe."
+      />
+      {acessoTotal && <EditarRequisitos action={salvarRequisitosEquipe.bind(null, m.id)} valores={m} />}
 
       <div className="card p-4">
         <h3 className="font-bold mb-2">Bônus por indicação</h3>

@@ -2,35 +2,36 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NAV_TABS, isAtivo } from "@/components/nav-config";
 
-const tabs = [
-  { href: "/", label: "Dashboard" },
-  { href: "/fichas", label: "Fichas" },
-  { href: "/candidatos", label: "Candidatos" },
-  { href: "/equipe", label: "Equipe" },
-  { href: "/busca", label: "Busca" },
-];
-
+// Barra de navegação inferior — apenas mobile (no desktop usa-se a Sidebar)
 export function NavTabs() {
   const pathname = usePathname();
   return (
-    <nav className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
-      {tabs.map((t) => {
-        const ativo = t.href === "/" ? pathname === "/" : pathname.startsWith(t.href);
-        return (
-          <Link
-            key={t.href}
-            href={t.href}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap ${
-              ativo
-                ? "border-brand-600 text-brand-700"
-                : "border-transparent text-gray-500 hover:text-gray-800"
-            }`}
-          >
-            {t.label}
-          </Link>
-        );
-      })}
+    <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 glass border-t border-slate-200/70 pb-[env(safe-area-inset-bottom)]">
+      <div className="grid grid-cols-5">
+        {NAV_TABS.map((t) => {
+          const ativo = isAtivo(t.href, pathname);
+          return (
+            <Link
+              key={t.href}
+              href={t.href}
+              className={`flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-semibold transition-colors ${
+                ativo ? "text-brand-700" : "text-slate-400"
+              }`}
+            >
+              <span
+                className={`flex h-9 w-12 items-center justify-center rounded-xl transition-all duration-200 ${
+                  ativo ? "bg-brand-100 text-brand-700" : "text-slate-500"
+                }`}
+              >
+                <t.Icon className="h-5 w-5" />
+              </span>
+              {t.label}
+            </Link>
+          );
+        })}
+      </div>
     </nav>
   );
 }

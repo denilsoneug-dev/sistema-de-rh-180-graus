@@ -2,28 +2,111 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-page: #f5f7fb;
+}
+
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  @apply text-slate-900 antialiased;
+  background-color: var(--bg-page);
+  background-image:
+    radial-gradient(900px 500px at 100% -5%, rgba(26, 102, 220, 0.07), transparent 60%),
+    radial-gradient(700px 400px at -5% 0%, rgba(249, 115, 22, 0.06), transparent 55%);
+  background-attachment: fixed;
 }
 
+/* ---------- Botões ---------- */
 .btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97] select-none;
 }
-.btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700; }
-.btn-secondary { @apply btn bg-white border border-gray-300 text-gray-700 hover:bg-gray-50; }
-.btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
-.btn-success { @apply btn bg-green-600 text-white hover:bg-green-700; }
+.btn-primary {
+  @apply btn text-white shadow-soft hover:shadow-lift;
+  background-image: linear-gradient(135deg, #2d7bf0 0%, #1a66dc 60%, #1450ae 100%);
+}
+.btn-primary:hover { filter: brightness(1.05); }
+.btn-secondary {
+  @apply btn bg-white/90 border border-slate-200 text-slate-700 shadow-soft hover:bg-white hover:border-brand-300 hover:text-brand-700;
+}
+.btn-accent {
+  @apply btn text-white shadow-soft hover:shadow-lift;
+  background-image: linear-gradient(135deg, #fb923c 0%, #f97316 55%, #ea580c 100%);
+}
+.btn-danger {
+  @apply btn bg-red-600 text-white shadow-soft hover:bg-red-700 hover:shadow-lift;
+}
+.btn-success {
+  @apply btn text-white shadow-soft hover:shadow-lift;
+  background-image: linear-gradient(135deg, #22c55e 0%, #16a34a 60%, #15803d 100%);
+}
 
-.card { @apply bg-white rounded-xl border border-gray-200 shadow-sm; }
+/* ---------- Cards ---------- */
+.card {
+  @apply bg-white rounded-2xl border border-slate-200/70 shadow-card transition-all duration-300;
+}
+.card-hover {
+  @apply hover:-translate-y-0.5 hover:shadow-lift hover:border-brand-200;
+}
+
+/* ---------- Inputs ---------- */
 .input {
-  @apply w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500;
+  @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 shadow-soft transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500;
 }
-.label { @apply block text-sm font-medium text-gray-700 mb-1; }
-.badge { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold; }
+select.input { @apply cursor-pointer; }
+.label { @apply block text-sm font-semibold text-slate-600 mb-1.5; }
 
+/* ---------- Badges ---------- */
+.badge {
+  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ring-black/5;
+}
+
+/* ---------- Utilidades de marca ---------- */
+.text-gradient-brand {
+  background-image: linear-gradient(120deg, #1a66dc, #2d7bf0 60%, #f97316);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.glass {
+  background-color: rgba(255, 255, 255, 0.78);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+}
+.sidebar-grad {
+  background-image: linear-gradient(180deg, #1450ae 0%, #0f3e85 55%, #0b2c5e 100%);
+}
+
+/* Brilho que percorre a logo */
+.shimmer { position: relative; overflow: hidden; }
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  animation: shimmer 2.6s ease-in-out 0.6s infinite;
+}
+
+/* Transição de entrada das páginas */
+.page-enter { animation: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Animação do formulário condicional */
 @keyframes conditional-field-in {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
 .conditional-field { animation: conditional-field-in 160ms ease-out; }
+
+/* Barra de rolagem discreta */
+* { scrollbar-width: thin; scrollbar-color: rgba(100, 116, 139, 0.35) transparent; }
+*::-webkit-scrollbar { height: 8px; width: 8px; }
+*::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.3); border-radius: 9999px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.5); }
+
+/* Respeita quem prefere menos movimento */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

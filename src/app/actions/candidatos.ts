@@ -91,6 +91,32 @@ export async function rejeitarCandidato(candidatoId: string, formData: FormData)
   redirect("/candidatos");
 }
 
+// Encerra o treinamento sem aprovar. Conceitualmente "saiu da operação em treinamento".
+// Sem status dedicado no banco ainda: reusa `rejeitado` com motivo prefixado e
+// auditoria própria ("encerrou_treinamento"). Ideal futuro: status próprio (ver relatório).
+export async function encerrarTreinamento(candidatoId: string, formData: FormData) {
+  const perfil = await requireAcessoTotal();
+  const motivoBase = String(formData.get("motivo") || "").trim();
+  const motivo = motivoBase
+    ? `Treinamento não aprovado: ${motivoBase}`
+    : "Treinamento não aprovado";
+  const supabase = await createClient();
+
+  const { data: cand } = await supabase.from("candidatos").select("status").eq("id", candidatoId).single();
+  if (!cand || cand.status !== "em_treinamento") throw new Error("Pessoa não está em treinamento");
+
+  const { error } = await supabase.from("candidatos").update({
+    status: "treinamento_encerrado",
+    rejeicao_motivo: motivo,
+    rejeitado_em: new Date().toISOString(),
+  }).eq("id", candidatoId);
+  if (error) throw new Error(error.message);
+  await logAudit({ usuario_id: perfil.id, usuario_nome: perfil.nome, acao: "encerrou_treinamento", entidade_tipo: "candidato", entidade_id: candidatoId, dados_depois: { motivo } });
+  revalidatePath("/candidatos");
+  revalidatePath("/equipe");
+  redirect("/equipe?tab=em_treinamento");
+}
+
 export async function efetivarCandidato(candidatoId: string, formData: FormData) {
   const perfil = await requireAcessoTotal();
   const supabase = await createClient();
@@ -104,7 +130,7 @@ export async function efetivarCandidato(candidatoId: string, formData: FormData)
   const aprovado = (etapas || []).some((e) => e.resultado === "aprovado");
   if (!aprovado) throw new Error("Treinamento ainda não foi aprovado");
 
-  const indicadoPor = String(formData.get("indicado_por") || "") || null;
+  const indicadoPor = String(formData.get("indicado_por") || "") || cand.indicado_por_equipe_id || null;
 
   const equipeRow: Record<string, unknown> = {
     nome: cand.nome,
@@ -120,13 +146,42 @@ export async function efetivarCandidato(candidatoId: string, formData: FormData)
     observacoes_iniciais: String(formData.get("observacoes") || "") || null,
   };
 
-  const { data: membro, error } = await supabase.from("equipe").insert(equipeRow).select("id").single();
-  if (error) throw new Error(error.message);
+  const { data: existente, error: buscaError } = await supabase
+    .from("equipe")
+    .select("id")
+    .or(`candidato_origem_id.eq.${candidatoId},cpf.eq.${cand.cpf}`)
+    .limit(1)
+    .maybeSingle();
+  if (buscaError) throw new Error(buscaError.message);
+
+  let membro = existente;
+  if (membro) {
+    const { error } = await supabase.from("equipe").update(equipeRow).eq("id", membro.id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { data: criado, error } = await supabase.from("equipe").insert(equipeRow).select("id").single();
+    if (error?.code === "23505") {
+      const { data: concorrente, error: concorrenteError } = await supabase
+        .from("equipe")
+        .select("id")
+        .or(`candidato_origem_id.eq.${candidatoId},cpf.eq.${cand.cpf}`)
+        .limit(1)
+        .maybeSingle();
+      if (concorrenteError || !concorrente) throw new Error(error.message);
+      membro = concorrente;
+      const { error: updateError } = await supabase.from("equipe").update(equipeRow).eq("id", membro.id);
+      if (updateError) throw new Error(updateError.message);
+    } else if (error || !criado) {
+      throw new Error(error?.message || "Não foi possível efetivar o candidato");
+    } else {
+      membro = criado;
+    }
+  }
 
   // Dados bancários opcionais
   const banco = String(formData.get("banco") || "").trim();
   if (banco) {
-    await supabase.from("dados_bancarios").insert({
+    const { error: bancoError } = await supabase.from("dados_bancarios").upsert({
       equipe_id: membro.id,
       banco,
       agencia: String(formData.get("agencia") || "") || null,
@@ -134,26 +189,34 @@ export async function efetivarCandidato(candidatoId: string, formData: FormData)
       tipo_conta: String(formData.get("tipo_conta") || "") || null,
       nome_titular: String(formData.get("nome_titular") || "") || null,
       cpf_titular: String(formData.get("cpf_titular") || "") || null,
-    });
+    }, { onConflict: "equipe_id" });
+    if (bancoError) throw new Error(bancoError.message);
   }
 
   // Bônus automático por indicação
   if (indicadoPor) {
-    const admin = createAdminClient();
-    const { data: cfg } = await admin.from("configuracoes").select("valor").eq("chave", "valor_bonus_indicacao").single();
-    const valor = cfg?.valor ? parseFloat(cfg.valor) : null;
-    await supabase.from("bonus_indicacao").insert({
-      indicador_equipe_id: indicadoPor,
-      indicado_equipe_id: membro.id,
-      candidato_origem_id: candidatoId,
-      valor,
-      status: "pendente",
-    });
+    const { data: bonusExistente, error: bonusBuscaError } = await supabase.from("bonus_indicacao")
+      .select("id").eq("candidato_origem_id", candidatoId).limit(1).maybeSingle();
+    if (bonusBuscaError) throw new Error(bonusBuscaError.message);
+    if (!bonusExistente) {
+      const admin = createAdminClient();
+      const { data: cfg } = await admin.from("configuracoes").select("valor").eq("chave", "valor_bonus_indicacao").single();
+      const valor = cfg?.valor ? parseFloat(cfg.valor) : null;
+      const { error: bonusError } = await supabase.from("bonus_indicacao").insert({
+        indicador_equipe_id: indicadoPor,
+        indicado_equipe_id: membro.id,
+        candidato_origem_id: candidatoId,
+        valor,
+        status: "pendente",
+      });
+      if (bonusError) throw new Error(bonusError.message);
+    }
   }
 
   await supabase.from("candidatos").update({ status: "efetivado", efetivado_em: new Date().toISOString() }).eq("id", candidatoId);
   await logAudit({ usuario_id: perfil.id, usuario_nome: perfil.nome, acao: "efetivou_candidato", entidade_tipo: "candidato", entidade_id: candidatoId, dados_depois: { equipe_id: membro.id, indicado_por: indicadoPor } });
   revalidatePath("/candidatos");
+  revalidatePath(`/candidatos/${candidatoId}`);
   revalidatePath("/equipe");
   redirect(`/equipe/${membro.id}`);
 }

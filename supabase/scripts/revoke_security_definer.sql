@@ -1,0 +1,51 @@
+-- =====================================================================
+-- REVOKE EXECUTE das funções SECURITY DEFINER expostas via RPC
+-- =====================================================================
+-- Advisor (0029): is_acesso_total(), is_usuario_ativo(), papel_atual()
+-- estão no schema `public` (exposto pelo PostgREST) e são executáveis por
+-- `authenticated` via /rest/v1/rpc/<fn>.
+--
+-- ⚠️ NÃO APLICAR ANTES DE LER ESTA ANÁLISE E CONFIRMAR.
+--
+-- ANÁLISE DE IMPACTO EM RLS
+-- -------------------------
+-- Essas funções são helpers usadas DENTRO das policies de RLS
+-- (ex.: USING (is_acesso_total()) / (is_usuario_ativo())). No PostgreSQL,
+-- a expressão de uma policy é avaliada com o papel que faz a query
+-- (`authenticated`). Chamar uma função exige privilégio EXECUTE para esse
+-- papel — mesmo sendo SECURITY DEFINER (o DEFINER muda QUEM executa o
+-- corpo, não QUEM pode chamar).
+--
+-- CONSEQUÊNCIA: um `REVOKE EXECUTE ... FROM authenticated` "seco" tende a
+-- QUEBRAR o RLS — leituras/escritas passariam a falhar com
+-- "permission denied for function ...". Portanto NÃO é seguro como está.
+--
+-- OPÇÃO RECOMENDADA (segura): mover os helpers para um schema NÃO exposto
+-- (ex.: `private`) e apontar as policies para lá. Assim o RPC público some
+-- e o RLS continua funcionando. Isso exige reescrever as policies (precisa
+-- do DDL atual delas) — recomendo fazer na Fase E, com o dump das policies
+-- em mãos e testes dos 2 papéis.
+--
+--   -- Esboço (NÃO aplicar sem revisar as policies):
+--   -- CREATE SCHEMA IF NOT EXISTS private;
+--   -- ALTER FUNCTION public.is_acesso_total()  SET SCHEMA private;
+--   -- ALTER FUNCTION public.is_usuario_ativo()  SET SCHEMA private;
+--   -- ALTER FUNCTION public.papel_atual()       SET SCHEMA private;
+--   -- ...e recriar cada policy referenciando private.<fn>()
+--   -- REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA private FROM anon, authenticated;
+--
+-- OPÇÃO "SECA" (apenas se as policies NÃO chamarem estas funções —
+-- improvável aqui). Mantida só para referência; provável quebra de RLS:
+--
+--   -- REVOKE EXECUTE ON FUNCTION public.is_acesso_total()  FROM authenticated, anon;
+--   -- REVOKE EXECUTE ON FUNCTION public.is_usuario_ativo() FROM authenticated, anon;
+--   -- REVOKE EXECUTE ON FUNCTION public.papel_atual()      FROM authenticated, anon;
+--
+-- PRÉ-CHECAGEM (rode para ver se as policies referenciam as funções):
+--   SELECT schemaname, tablename, policyname, qual, with_check
+--   FROM pg_policies
+--   WHERE qual ILIKE '%is_acesso_total%' OR qual ILIKE '%is_usuario_ativo%'
+--      OR qual ILIKE '%papel_atual%'     OR with_check ILIKE '%is_acesso_total%';
+--
+-- Nada neste arquivo deve ser executado automaticamente.
+-- =====================================================================

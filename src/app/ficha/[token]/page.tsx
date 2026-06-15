@@ -1,5 +1,6 @@
 import { buscarFichaPorToken } from "@/app/actions/ficha-publica";
 import { FormularioFicha } from "./FormularioFicha";
+import { Logo } from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +16,10 @@ export default async function FichaPublicaPage({ params }: { params: Promise<{ t
     };
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
-        <div className="card max-w-md w-full p-8 text-center">
-          <h1 className="text-xl font-bold mb-2">180 Graus</h1>
-          <p className="text-gray-600">{msgs[ficha.motivo || "nao_encontrada"]}</p>
+        <div className="card max-w-md w-full p-8 text-center animate-scale-in">
+          <div className="mb-4 flex justify-center"><Logo size={48} showWordmark={false} /></div>
+          <h1 className="font-display text-xl font-extrabold mb-2 text-slate-900">180 Graus</h1>
+          <p className="text-slate-600">{msgs[ficha.motivo || "nao_encontrada"]}</p>
         </div>
       </main>
     );

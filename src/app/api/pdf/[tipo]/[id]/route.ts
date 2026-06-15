@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage } from "pdf-lib";
 import { createClient } from "@/lib/supabase/server";
 import { getPerfil } from "@/lib/auth";
-import { formatarCpf, formatarTelefone } from "@/lib/cpf";
+import { formatarCpf, formatarTelefone, mascararCpf } from "@/lib/cpf";
 import { requisitosPrincipais, fmtData, fmtDataHora, fmtMoeda, ETAPA_LABELS, STATUS_FICHA_LABELS, STATUS_EQUIPE_LABELS, PERGUNTAS_SOBRE_VOCE } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ tipo
     doc.linha("Idade", String(r.idade));
     doc.linha("Endereço", String(r.endereco));
     doc.linha("WhatsApp", formatarTelefone(String(r.whatsapp)));
-    doc.linha("CPF", formatarCpf(String(r.cpf)));
+    doc.linha("CPF", acessoTotal ? formatarCpf(String(r.cpf)) : mascararCpf(String(r.cpf)));
     doc.linha("Tamanho de camisa", String(r.tamanho_camisa));
     doc.linha("E-mail", String(r.email));
     doc.linha("Instagram", String(r.instagram || "—"));
@@ -163,7 +163,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ tipo
     nomeArquivo = `candidato-${c.nome.replace(/\s+/g, "-").toLowerCase()}`;
     doc.titulo("180 Graus - Candidato em Processo");
     doc.linha("Nome", c.nome);
-    doc.linha("CPF", formatarCpf(c.cpf));
+    doc.linha("CPF", acessoTotal ? formatarCpf(c.cpf) : mascararCpf(c.cpf));
     doc.linha("Telefone", formatarTelefone(c.telefone || ""));
     doc.linha("Vaga", c.vaga_pretendida || "—");
     doc.linha("Status atual", ETAPA_LABELS[c.status] || c.status);
@@ -190,7 +190,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ tipo
     nomeArquivo = `equipe-${m.nome.replace(/\s+/g, "-").toLowerCase()}`;
     doc.titulo("180 Graus - Equipe Atual");
     doc.linha("Nome", m.nome);
-    doc.linha("CPF", formatarCpf(m.cpf));
+    doc.linha("CPF", acessoTotal ? formatarCpf(m.cpf) : mascararCpf(m.cpf));
     doc.linha("Telefone", formatarTelefone(m.telefone));
     doc.linha("Cargo", m.cargo);
     doc.linha("Salário", fmtMoeda(m.salario));

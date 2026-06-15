@@ -36,6 +36,7 @@ export const ETAPA_LABELS: Record<string, string> = {
   treinamento: "Treinamento",
   rejeitado: "Rejeitado",
   efetivado: "Efetivado",
+  treinamento_encerrado: "Treinamento encerrado",
 };
 
 export const STATUS_FICHA_LABELS: Record<string, string> = {
@@ -73,6 +74,110 @@ export function requisitosPrincipais(r: {
   const cnh = !!r.tem_cnh;
   const pontos = [disponibilidade, notebook, veiculo, cnh].filter(Boolean).length;
   return { disponibilidade, notebook, veiculo, cnh, pontos };
+}
+
+// Resumo de requisitos principais usado em Fichas, Candidatos, Equipe e Busca.
+export type RequisitoEstado = "ok" | "atencao" | "negativo";
+
+export type ResumoRequisitos = {
+  pontos: number;
+  total: number; // sempre 4
+  estado: "forte" | "medio" | "fraco";
+  itens: {
+    disponibilidade: { label: string; estado: RequisitoEstado };
+    notebook: { label: string; estado: RequisitoEstado };
+    veiculo: { label: string; estado: RequisitoEstado };
+    cnh: { label: string; estado: RequisitoEstado };
+  };
+};
+
+// Colunas mínimas de ficha_respostas necessárias para o resumo (evita SELECT *).
+export const REQUISITOS_SELECT =
+  "disponibilidade_viajar, notebook_proprio, moto_propria, carro_proprio, tem_cnh, cnh_categoria";
+
+// Colunas de override manual em candidatos/equipe.
+export const REQUISITOS_OVERRIDE_SELECT =
+  "req_disponibilidade, req_notebook, req_veiculo, req_cnh, req_cnh_categoria";
+
+type ResumoInput = {
+  disponibilidade_viajar?: string | null;
+  notebook_proprio?: boolean | null;
+  moto_propria?: boolean | null;
+  carro_proprio?: boolean | null;
+  tem_cnh?: boolean | null;
+  cnh_categoria?: string | null;
+} | null | undefined;
+
+// Valores já normalizados (4 requisitos). Builder central do resumo.
+type RequisitosNormalizados = {
+  disponibilidade: string | null; // 'integral' | 'parcial' | 'nao_tenho' | null
+  notebook: boolean;
+  veiculo: boolean;
+  cnh: boolean;
+  cnhCategoria: string | null;
+};
+
+function montarResumo(n: RequisitosNormalizados): ResumoRequisitos {
+  const dispOk = n.disponibilidade === "integral";
+  const pontos = [dispOk, n.notebook, n.veiculo, n.cnh].filter(Boolean).length;
+  const dispEstado: RequisitoEstado = n.disponibilidade === "integral" ? "ok" : n.disponibilidade === "parcial" ? "atencao" : "negativo";
+  const dispLabel = n.disponibilidade === "integral" ? "Integral" : n.disponibilidade === "parcial" ? "Parcial" : "Não tem";
+  const cnhLabel = n.cnh ? (n.cnhCategoria ? `Sim — ${n.cnhCategoria}` : "Sim") : "Não";
+  return {
+    pontos,
+    total: 4,
+    estado: pontos >= 4 ? "forte" : pontos >= 2 ? "medio" : "fraco",
+    itens: {
+      disponibilidade: { label: dispLabel, estado: dispEstado },
+      notebook: { label: n.notebook ? "Sim" : "Não", estado: n.notebook ? "ok" : "negativo" },
+      veiculo: { label: n.veiculo ? "Sim" : "Não", estado: n.veiculo ? "ok" : "negativo" },
+      cnh: { label: cnhLabel, estado: n.cnh ? "ok" : "negativo" },
+    },
+  };
+}
+
+export function resumoRequisitos(r: ResumoInput): ResumoRequisitos | null {
+  if (!r) return null;
+  return montarResumo({
+    disponibilidade: r.disponibilidade_viajar ?? null,
+    notebook: !!r.notebook_proprio,
+    veiculo: !!r.moto_propria || !!r.carro_proprio,
+    cnh: !!r.tem_cnh,
+    cnhCategoria: r.cnh_categoria ?? null,
+  });
+}
+
+// Override manual (candidatos/equipe). Campos NULL = não editados → usa a ficha.
+export type RequisitosOverride = {
+  req_disponibilidade?: string | null;
+  req_notebook?: boolean | null;
+  req_veiculo?: boolean | null;
+  req_cnh?: boolean | null;
+  req_cnh_categoria?: string | null;
+} | null | undefined;
+
+export function temOverrideRequisitos(o: RequisitosOverride): boolean {
+  if (!o) return false;
+  return (
+    o.req_disponibilidade != null ||
+    o.req_notebook != null ||
+    o.req_veiculo != null ||
+    o.req_cnh != null ||
+    (o.req_cnh_categoria != null && o.req_cnh_categoria !== "")
+  );
+}
+
+// Combina ficha (base) + override manual. Override vence campo a campo.
+export function resumoComOverride(ficha: ResumoInput, override: RequisitosOverride): ResumoRequisitos | null {
+  const temFicha = !!ficha;
+  if (!temFicha && !temOverrideRequisitos(override)) return null;
+  return montarResumo({
+    disponibilidade: override?.req_disponibilidade ?? ficha?.disponibilidade_viajar ?? null,
+    notebook: override?.req_notebook ?? !!ficha?.notebook_proprio,
+    veiculo: override?.req_veiculo ?? (!!ficha?.moto_propria || !!ficha?.carro_proprio),
+    cnh: override?.req_cnh ?? !!ficha?.tem_cnh,
+    cnhCategoria: override?.req_cnh_categoria ?? ficha?.cnh_categoria ?? null,
+  });
 }
 
 export function diasDesde(data: string | Date | null | undefined): number {

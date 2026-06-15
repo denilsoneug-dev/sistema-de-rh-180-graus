@@ -2,15 +2,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPerfil } from "@/lib/auth";
-import { registrarEtapa, rejeitarCandidato, efetivarCandidato } from "@/app/actions/candidatos";
-import { formatarCpf, formatarTelefone } from "@/lib/cpf";
-import { ETAPA_LABELS, diasDesde, fmtData, fmtDataHora, requisitosPrincipais } from "@/lib/constants";
+import { registrarEtapa, rejeitarCandidato, efetivarCandidato, encerrarTreinamento } from "@/app/actions/candidatos";
+import { salvarRequisitosCandidato } from "@/app/actions/requisitos";
+import { formatarTelefone, cpfPorPapel } from "@/lib/cpf";
+import { ETAPA_LABELS, diasDesde, fmtData, fmtDataHora, resumoComOverride } from "@/lib/constants";
+import { candidatoEstaEmProcesso } from "@/lib/equipe-treinamento";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { Observacoes } from "@/components/Observacoes";
+import { ResumoRequisitos } from "@/components/ResumoRequisitos";
+import { EditarRequisitos } from "@/components/EditarRequisitos";
 
 export const dynamic = "force-dynamic";
-
-const ETAPAS_ATIVAS = ["entrevista_online", "entrevista_presencial", "redacao_escrita", "em_treinamento"];
 
 export default async function CandidatoDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,7 +29,6 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
   const { data: ficha } = await supabase.from("fichas")
     .select("*, ficha_respostas(*)").eq("id", c.ficha_id).single();
   const r = ficha ? (Array.isArray(ficha.ficha_respostas) ? ficha.ficha_respostas[0] : ficha.ficha_respostas) : null;
-  const req = r ? requisitosPrincipais(r) : null;
 
   const { data: obs } = await supabase.from("observacoes")
     .select("*").eq("entidade_tipo", "candidato").eq("entidade_id", id)
@@ -36,10 +37,15 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
   const { data: equipe } = acessoTotal
     ? await supabase.from("equipe").select("id, nome").in("status", ["ativo", "em_experiencia"]).order("nome")
     : { data: [] };
+  const indicador = c.indicado_por_equipe_id
+    ? (equipe || []).find((m) => m.id === c.indicado_por_equipe_id) ||
+      (await supabase.from("equipe").select("id, nome").eq("id", c.indicado_por_equipe_id).maybeSingle()).data
+    : null;
 
-  const emProcesso = ETAPAS_ATIVAS.includes(c.status as string);
+  const emSelecao = candidatoEstaEmProcesso(c.status); // entrevistas + redação (fonte única)
   const isTreinamento = c.status === "em_treinamento";
   const isRedacao = c.status === "redacao_escrita";
+  const podeRegistrar = emSelecao || isTreinamento; // registrar etapa vale p/ seleção e treinamento
   const treinamentoAprovado = (etapas || []).some((e) => e.tipo_etapa === "treinamento" && e.resultado === "aprovado");
   const dias = diasDesde(c.etapa_atual_desde);
 
@@ -48,10 +54,10 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold">{c.nome}</h1>
-          <p className="text-sm text-gray-500">CPF {formatarCpf(c.cpf)} · {formatarTelefone(c.telefone)} · {c.vaga_pretendida || "—"}</p>
+          <p className="text-sm text-gray-500">CPF {cpfPorPapel(c.cpf, acessoTotal)} · {formatarTelefone(c.telefone)} · {c.vaga_pretendida || "—"}</p>
           <div className="flex items-center gap-2 mt-1">
             <span className="badge bg-blue-100 text-blue-800">{ETAPA_LABELS[c.status as string] || c.status}</span>
-            {emProcesso && <span className="text-sm text-gray-500">há {dias} dia(s) nesta etapa (desde {fmtData(c.etapa_atual_desde)})</span>}
+            {podeRegistrar && <span className="text-sm text-gray-500">há {dias} dia(s) nesta etapa (desde {fmtData(c.etapa_atual_desde)})</span>}
           </div>
         </div>
         <div className="flex gap-2">
@@ -60,28 +66,39 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
         </div>
       </div>
 
-      {req && (
-        <div className="card p-4">
-          <h3 className="font-bold mb-1">Requisitos principais: {req.pontos} de 4</h3>
-          <p className="text-sm text-gray-600">
-            Viajar: {req.disponibilidade ? "Sim" : "Não"} · Notebook: {req.notebook ? "Sim" : "Não"} · Veículo: {req.veiculo ? "Sim" : "Não"} · CNH: {req.cnh ? "Sim" : "Não"}
+      {isTreinamento && (
+        <div className="card p-4 border-l-4 border-l-brand-500 bg-brand-50/60">
+          <p className="font-semibold text-brand-800">Esta pessoa está em treinamento e já aparece na Equipe.</p>
+          <p className="mt-1 text-sm text-brand-700">
+            Treinamento já é operação — não é mais seleção. Ainda não é ativo definitivo nem efetivado.{" "}
+            <Link href="/equipe?tab=em_treinamento" className="font-medium underline underline-offset-2">Ver em Equipe › Em treinamento</Link>.
           </p>
         </div>
       )}
 
-      {c.curriculo_url && (
+      <ResumoRequisitos
+        variante="detalhado"
+        resumo={resumoComOverride(r, c)}
+        semFichaMsg="Requisitos não informados (sem ficha vinculada)."
+      />
+      <div className="card p-4 text-sm">
+        <p><span className="text-gray-500">Quem indicou:</span> {indicador?.nome || "Sem indicação informada"}</p>
+      </div>
+      {acessoTotal && <EditarRequisitos action={salvarRequisitosCandidato.bind(null, c.id)} valores={c} />}
+
+      {c.curriculo_url && acessoTotal && (
         <div className="card p-4 flex items-center justify-between flex-wrap gap-2">
           <h3 className="font-bold">Currículo</h3>
-          <div className="flex gap-2">
-            <a className="btn-secondary" href={`/api/arquivo?bucket=curriculos&path=${encodeURIComponent(c.curriculo_url)}`} target="_blank">Ver</a>
-            <a className="btn-secondary" href={`/api/arquivo?bucket=curriculos&path=${encodeURIComponent(c.curriculo_url)}&download=1`}>Baixar</a>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <a className="btn-secondary flex-1 sm:flex-none" href={`/api/arquivo?bucket=curriculos&path=${encodeURIComponent(c.curriculo_url)}`} target="_blank">Ver</a>
+            <a className="btn-secondary flex-1 sm:flex-none" href={`/api/arquivo?bucket=curriculos&path=${encodeURIComponent(c.curriculo_url)}&download=1`}>Baixar</a>
           </div>
         </div>
       )}
 
-      {emProcesso && acessoTotal && (
+      {podeRegistrar && acessoTotal && (
         <div className="card p-4 space-y-3">
-          <h3 className="font-bold">Registrar {ETAPA_LABELS[c.status as string]?.toLowerCase()}</h3>
+          <h3 className="font-bold">{isTreinamento ? "Registrar acompanhamento do treinamento" : `Registrar ${ETAPA_LABELS[c.status as string]?.toLowerCase()}`}</h3>
           <form action={registrarEtapa.bind(null, c.id)} className="space-y-3">
             <div className="grid sm:grid-cols-3 gap-3">
               <div>
@@ -141,7 +158,7 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
                 )}
               </select>
             </div>
-            <button className="btn-primary">Salvar registro</button>
+            <button className="btn-primary w-full sm:w-auto">Salvar registro</button>
           </form>
         </div>
       )}
@@ -157,8 +174,8 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
               <div><label className="label">Data de entrada *</label><input name="data_entrada" type="date" className="input" required /></div>
             </div>
             <div>
-              <label className="label">Quem indicou *</label>
-              <select name="indicado_por" className="input">
+              <label className="label">Quem indicou</label>
+              <select name="indicado_por" className="input" defaultValue={c.indicado_por_equipe_id || ""}>
                 <option value="">Sem indicação</option>
                 {(equipe || []).map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
               </select>
@@ -183,20 +200,33 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
                 <div><label className="label">CPF do titular</label><input name="cpf_titular" className="input" /></div>
               </div>
             </details>
-            <ConfirmSubmit mensagem="Tem certeza que deseja efetivar este candidato?" className="btn-success">
+            <ConfirmSubmit mensagem="Tem certeza que deseja efetivar este candidato?" className="btn-success w-full sm:w-auto">
               Efetivar candidato
             </ConfirmSubmit>
           </form>
         </div>
       )}
 
-      {emProcesso && acessoTotal && (
+      {emSelecao && acessoTotal && (
         <div className="card p-4">
           <h3 className="font-bold mb-2">Rejeitar candidato</h3>
-          <form action={rejeitarCandidato.bind(null, c.id)} className="flex flex-wrap gap-2">
-            <input name="motivo" className="input !w-72" placeholder="Motivo da rejeição" />
-            <ConfirmSubmit mensagem="Tem certeza que deseja rejeitar este candidato?" className="btn-danger">
+          <form action={rejeitarCandidato.bind(null, c.id)} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+            <input name="motivo" className="input w-full sm:!w-72" placeholder="Motivo da rejeição" />
+            <ConfirmSubmit mensagem="Tem certeza que deseja rejeitar este candidato?" className="btn-danger w-full sm:w-auto">
               Rejeitar
+            </ConfirmSubmit>
+          </form>
+        </div>
+      )}
+
+      {isTreinamento && acessoTotal && (
+        <div className="card p-4">
+          <h3 className="font-bold mb-2">Encerrar treinamento</h3>
+          <p className="text-sm text-gray-500 mb-2">Use quando a pessoa não for aprovada no treinamento. Ela sai da operação em treinamento.</p>
+          <form action={encerrarTreinamento.bind(null, c.id)} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+            <input name="motivo" className="input w-full sm:!w-72" placeholder="Motivo (opcional)" />
+            <ConfirmSubmit mensagem="Encerrar o treinamento desta pessoa? Ela deixará de aparecer em Equipe › Em treinamento." className="btn-danger w-full sm:w-auto">
+              Não aprovar no treinamento
             </ConfirmSubmit>
           </form>
         </div>
@@ -219,7 +249,7 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
                 {e.entrevistador_nome ? ` · Entrevistou: ${e.entrevistador_nome}` : ""}
               </p>
               {e.observacoes && <p className="text-gray-600 mt-1">{e.observacoes}</p>}
-              {e.arquivo_url && (
+              {e.arquivo_url && acessoTotal && (
                 <a className="text-brand-700 underline" href={`/api/arquivo?bucket=redacoes&path=${encodeURIComponent(e.arquivo_url)}`} target="_blank">Ver redação anexada</a>
               )}
               <p className="text-xs text-gray-400 mt-1">Registrado em {fmtDataHora(e.criado_em)}</p>
@@ -231,6 +261,15 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
       {c.status === "rejeitado" && (
         <div className="card p-4 border-red-200">
           <p className="text-sm text-red-700">Rejeitado em {fmtData(c.rejeitado_em)}{c.rejeicao_motivo ? ` · Motivo: ${c.rejeicao_motivo}` : ""}</p>
+        </div>
+      )}
+
+      {c.status === "treinamento_encerrado" && (
+        <div className="card p-4 border-amber-200 bg-amber-50/50">
+          <p className="font-semibold text-amber-800">Treinamento encerrado — não aprovado para efetivação.</p>
+          <p className="text-sm text-amber-700 mt-1">
+            Encerrado em {fmtData(c.rejeitado_em)}{c.rejeicao_motivo ? ` · ${c.rejeicao_motivo}` : ""}. Esta pessoa não faz parte da Equipe.
+          </p>
         </div>
       )}
 

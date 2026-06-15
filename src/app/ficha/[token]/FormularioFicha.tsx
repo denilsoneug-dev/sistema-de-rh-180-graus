@@ -5,6 +5,7 @@ import { enviarFichaPublica } from "@/app/actions/ficha-publica";
 import { validarCpf, formatarCpf, limparCpf } from "@/lib/cpf";
 import { FERRAMENTAS, HORAS_LIVRES, PERGUNTAS_SOBRE_VOCE } from "@/lib/constants";
 import { CURRICULO_ACCEPT, validarCurriculoArquivo } from "@/lib/curriculo";
+import { Logo } from "@/components/Logo";
 
 const TOTAL_ETAPAS = 7;
 
@@ -194,26 +195,33 @@ export function FormularioFicha({ token, nome }: { token: string; nome: string }
 
   if (enviado) {
     return (
-      <main className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
-        <div className="card max-w-md w-full p-8 text-center">
-          <div className="text-5xl mb-4">✅</div>
-          <h1 className="text-xl font-bold mb-2">Ficha enviada!</h1>
-          <p className="text-gray-600">Obrigado, {v("nome_completo").split(" ")[0]}. O recrutamento do 180 Graus recebeu sua ficha e vai entrar em contato.</p>
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <div className="card max-w-md w-full p-8 text-center animate-scale-in">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-3xl">✅</div>
+          <h1 className="font-display text-xl font-extrabold mb-2 text-slate-900">Ficha enviada!</h1>
+          <p className="text-slate-600">Obrigado, {v("nome_completo").split(" ")[0]}. O recrutamento do 180 Graus recebeu sua ficha e vai entrar em contato.</p>
+          <div className="mt-5 flex justify-center"><Logo size={34} /></div>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 pb-10">
-      <div className="bg-white border-b sticky top-0 z-10">
+    <main className="min-h-screen pb-10">
+      <div className="glass border-b border-slate-200/70 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-bold text-brand-700">180 Graus · Ficha Cadastral</span>
-            <span className="text-sm text-gray-500">Etapa {etapa} de {TOTAL_ETAPAS}</span>
+          <div className="flex items-center justify-between mb-2.5">
+            <Logo size={34} showWordmark={false} />
+            <div className="text-right leading-tight">
+              <span className="block font-display text-sm font-bold text-brand-800">Ficha Cadastral</span>
+              <span className="text-xs text-slate-500">Etapa {etapa} de {TOTAL_ETAPAS}</span>
+            </div>
           </div>
-          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-brand-600 transition-all" style={{ width: `${(etapa / TOTAL_ETAPAS) * 100}%` }} />
+          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${(etapa / TOTAL_ETAPAS) * 100}%`, backgroundImage: "linear-gradient(90deg,#2d7bf0,#1a66dc,#f97316)" }}
+            />
           </div>
         </div>
       </div>

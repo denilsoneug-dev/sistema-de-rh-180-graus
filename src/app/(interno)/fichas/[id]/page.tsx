@@ -1,12 +1,14 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPerfil } from "@/lib/auth";
-import { regerarLink, arquivarFicha, rejeitarFicha, selecionarParaProcesso } from "@/app/actions/fichas";
-import { formatarCpf, formatarTelefone } from "@/lib/cpf";
-import { requisitosPrincipais, fmtData, fmtDataHora, PERGUNTAS_SOBRE_VOCE, STATUS_FICHA_LABELS } from "@/lib/constants";
+import { atualizarStatusRecrutamento, regerarLink, arquivarFicha, rejeitarFicha, selecionarParaProcesso } from "@/app/actions/fichas";
+import { formatarTelefone, cpfPorPapel } from "@/lib/cpf";
+import { resumoRequisitos, fmtData, fmtDataHora, PERGUNTAS_SOBRE_VOCE, STATUS_FICHA_LABELS } from "@/lib/constants";
 import { CopiarLink } from "@/components/CopiarLink";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { Observacoes } from "@/components/Observacoes";
+import { ResumoRequisitos } from "@/components/ResumoRequisitos";
+import { STATUS_RECRUTAMENTO, STATUS_RECRUTAMENTO_CLASSES, STATUS_RECRUTAMENTO_LABELS, statusRecrutamentoValido, type StatusRecrutamento } from "@/lib/rh";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +21,6 @@ export default async function FichaDetalhe({ params, searchParams }: { params: P
   const { data: ficha } = await supabase.from("fichas").select("*, ficha_respostas(*)").eq("id", id).single();
   if (!ficha) notFound();
   const r = Array.isArray(ficha.ficha_respostas) ? ficha.ficha_respostas[0] : ficha.ficha_respostas;
-  const req = r ? requisitosPrincipais(r) : null;
 
   const { data: obs } = await supabase.from("observacoes")
     .select("*").eq("entidade_tipo", "ficha").eq("entidade_id", id)
@@ -43,21 +44,48 @@ export default async function FichaDetalhe({ params, searchParams }: { params: P
     ? await supabase.from("equipe").select("id, nome").in("status", ["ativo", "em_experiencia"]).order("nome")
     : { data: [] };
 
-  const link = token
-    ? `${process.env.NEXT_PUBLIC_APP_URL || ""}/ficha/${token}`
+  // Mostra o link recém-gerado (?token=...) ou o token salvo na ficha (uso interno).
+  const tokenLink = token || ficha.token_atual || null;
+  const link = tokenLink
+    ? `${process.env.NEXT_PUBLIC_APP_URL || ""}/ficha/${tokenLink}`
     : null;
 
   const sv = (r?.respostas_sobre_voce_json || {}) as Record<string, string>;
+  const statusRh: StatusRecrutamento = statusRecrutamentoValido(String(ficha.status_recrutamento || ""))
+    ? ficha.status_recrutamento as StatusRecrutamento
+    : "nova_ficha";
 
   return (
     <div className="space-y-4 max-w-3xl">
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold">{r?.nome_completo || ficha.nome_inicial}</h1>
-          <span className="badge bg-gray-100 text-gray-700">{STATUS_FICHA_LABELS[ficha.status]}</span>
+          <h1 className="text-xl font-bold break-words">{r?.nome_completo || ficha.nome_inicial}</h1>
+          <div className="mt-1 flex flex-wrap gap-2">
+            <span className={`badge ${STATUS_RECRUTAMENTO_CLASSES[statusRh]}`}>{STATUS_RECRUTAMENTO_LABELS[statusRh]}</span>
+            <span className="badge bg-gray-100 text-gray-700">Ficha: {STATUS_FICHA_LABELS[ficha.status]}</span>
+          </div>
         </div>
-        {r && <a className="btn-secondary" href={`/api/pdf/ficha/${ficha.id}`} target="_blank">Exportar PDF</a>}
+        {r && <a className="btn-secondary w-full sm:w-auto" href={`/api/pdf/ficha/${ficha.id}`} target="_blank">Exportar PDF</a>}
       </div>
+
+      {r && (
+        <div className="card p-4">
+          <h2 className="font-bold mb-3">Status do recrutamento</h2>
+          {acessoTotal ? (
+            <form action={atualizarStatusRecrutamento.bind(null, ficha.id)} className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <label className="label" htmlFor="status-recrutamento">Status atual</label>
+                <select id="status-recrutamento" name="status_recrutamento" className="input" defaultValue={statusRh}>
+                  {STATUS_RECRUTAMENTO.map((status) => <option key={status} value={status}>{STATUS_RECRUTAMENTO_LABELS[status]}</option>)}
+                </select>
+              </div>
+              <button className="btn-primary w-full sm:w-auto">Salvar status</button>
+            </form>
+          ) : (
+            <p className="text-sm text-gray-600">{STATUS_RECRUTAMENTO_LABELS[statusRh]}</p>
+          )}
+        </div>
+      )}
 
       {rejeicaoAnterior && (
         <div className="card p-4 border-amber-300 bg-amber-50">
@@ -76,16 +104,17 @@ export default async function FichaDetalhe({ params, searchParams }: { params: P
             <>
               <p className="text-sm text-gray-600 break-all bg-gray-50 rounded-lg p-2">{link}</p>
               <CopiarLink link={link} nome={ficha.nome_inicial} />
-              <p className="text-xs text-gray-400">Guarde este link agora — por segurança ele não fica salvo no sistema. Se perder, gere um novo.</p>
+              <p className="text-xs text-gray-400">
+                {ficha.status === "expirada"
+                  ? "Este link expirou — gere um novo para reativá-lo."
+                  : `Enviado em ${fmtDataHora(ficha.link_enviado_em)} · expira em ${fmtData(ficha.link_expira_em)}.`}
+              </p>
             </>
           ) : (
-            <p className="text-sm text-gray-500">
-              {ficha.status === "expirada" ? "O link expirou." : `Link enviado em ${fmtDataHora(ficha.link_enviado_em)} · expira ${fmtData(ficha.link_expira_em)}.`}
-              {" "}O link só é exibido no momento da geração.
-            </p>
+            <p className="text-sm text-gray-500">Nenhum link ativo. Gere um novo link abaixo.</p>
           )}
           <form action={regerarLink.bind(null, ficha.id)}>
-            <ConfirmSubmit mensagem="Gerar um novo link? O link antigo deixará de funcionar." className="btn-secondary">
+            <ConfirmSubmit mensagem="Gerar um novo link? O link antigo deixará de funcionar." className="btn-secondary w-full sm:w-auto">
               Gerar novo link
             </ConfirmSubmit>
           </form>
@@ -95,7 +124,7 @@ export default async function FichaDetalhe({ params, searchParams }: { params: P
       {ficha.status === "recebida" && acessoTotal && (
         <div className="card p-4 space-y-4">
           <h3 className="font-bold">Ações</h3>
-          <form action={selecionarParaProcesso.bind(null, ficha.id)} className="flex flex-wrap items-end gap-2">
+          <form action={selecionarParaProcesso.bind(null, ficha.id)} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
             <div className="flex-1 min-w-48">
               <label className="label">Quem indicou (opcional)</label>
               <select name="indicado_por" className="input">
@@ -103,19 +132,19 @@ export default async function FichaDetalhe({ params, searchParams }: { params: P
                 {(equipe || []).map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
               </select>
             </div>
-            <ConfirmSubmit mensagem="Selecionar esta ficha para o processo seletivo? O candidato entrará na etapa Entrevista online." className="btn-primary">
+            <ConfirmSubmit mensagem="Selecionar esta ficha para o processo seletivo? O candidato entrará na etapa Entrevista online." className="btn-primary w-full sm:w-auto">
               Selecionar para processo
             </ConfirmSubmit>
           </form>
-          <div className="flex flex-wrap gap-2 border-t pt-4">
-            <form action={arquivarFicha.bind(null, ficha.id)}>
-              <ConfirmSubmit mensagem="Arquivar esta ficha? Ela sai da lista principal mas continua salva." className="btn-secondary">
+          <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:flex-wrap sm:items-end">
+            <form action={arquivarFicha.bind(null, ficha.id)} className="w-full sm:w-auto">
+              <ConfirmSubmit mensagem="Arquivar esta ficha? Ela sai da lista principal mas continua salva." className="btn-secondary w-full sm:w-auto">
                 Arquivar
               </ConfirmSubmit>
             </form>
-            <form action={rejeitarFicha.bind(null, ficha.id)} className="flex flex-wrap gap-2">
-              <input name="motivo" className="input !w-64" placeholder="Motivo da rejeição (opcional)" />
-              <ConfirmSubmit mensagem="Rejeitar esta ficha? Ela sairá da área principal." className="btn-danger">
+            <form action={rejeitarFicha.bind(null, ficha.id)} className="flex flex-col gap-2 w-full sm:w-auto sm:flex-row sm:flex-wrap sm:items-end">
+              <input name="motivo" className="input w-full sm:!w-64" placeholder="Motivo da rejeição (opcional)" />
+              <ConfirmSubmit mensagem="Rejeitar esta ficha? Ela sairá da área principal." className="btn-danger w-full sm:w-auto">
                 Rejeitar
               </ConfirmSubmit>
             </form>
@@ -123,19 +152,9 @@ export default async function FichaDetalhe({ params, searchParams }: { params: P
         </div>
       )}
 
-      {req && (
-        <div className="card p-4">
-          <h3 className="font-bold mb-2">Requisitos principais: {req.pontos} de 4</h3>
-          <ul className="text-sm space-y-1">
-            <li>{req.disponibilidade ? "✅" : "❌"} Disponibilidade para viajar: {req.disponibilidade ? "Sim" : r?.disponibilidade_viajar === "parcial" ? "Parcial" : "Não"}</li>
-            <li>{req.notebook ? "✅" : "❌"} Notebook próprio: {req.notebook ? "Sim" : "Não"}</li>
-            <li>{req.veiculo ? "✅" : "❌"} Veículo próprio: {req.veiculo ? "Sim" : "Não"}</li>
-            <li>{req.cnh ? "✅" : "❌"} CNH: {req.cnh ? `Sim${r?.cnh_categoria ? ` (${r.cnh_categoria})` : ""}` : "Não"}</li>
-          </ul>
-        </div>
-      )}
+      {r && <ResumoRequisitos variante="detalhado" resumo={resumoRequisitos(r)} />}
 
-      {ficha.curriculo_url && (
+      {ficha.curriculo_url && acessoTotal && (
         <div className="card p-4 flex items-center justify-between flex-wrap gap-2">
           <div>
             <h3 className="font-bold">Currículo</h3>
@@ -143,52 +162,69 @@ export default async function FichaDetalhe({ params, searchParams }: { params: P
               <p className="text-sm text-gray-500 break-all">{ficha.curriculo_nome_arquivo}</p>
             )}
           </div>
-          <div className="flex gap-2">
-            <a className="btn-secondary" href={`/api/arquivo?bucket=curriculos&path=${encodeURIComponent(ficha.curriculo_url)}`} target="_blank">Ver currículo</a>
-            <a className="btn-secondary" href={`/api/arquivo?bucket=curriculos&path=${encodeURIComponent(ficha.curriculo_url)}&download=1`}>Baixar</a>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <a className="btn-secondary flex-1 sm:flex-none" href={`/api/arquivo?bucket=curriculos&path=${encodeURIComponent(ficha.curriculo_url)}`} target="_blank">Ver currículo</a>
+            <a className="btn-secondary flex-1 sm:flex-none" href={`/api/arquivo?bucket=curriculos&path=${encodeURIComponent(ficha.curriculo_url)}&download=1`}>Baixar</a>
           </div>
         </div>
       )}
 
       {r && (
-        <div className="card p-4 space-y-4 text-sm">
-          <h3 className="font-bold text-base">Respostas da ficha</h3>
-          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
-            <p><span className="text-gray-500">Vaga:</span> {r.vaga_pretendida}</p>
-            <p><span className="text-gray-500">Idade:</span> {r.idade}</p>
-            <p><span className="text-gray-500">CPF:</span> {formatarCpf(r.cpf)}</p>
-            <p><span className="text-gray-500">WhatsApp:</span> {formatarTelefone(r.whatsapp)}</p>
-            <p><span className="text-gray-500">E-mail:</span> {r.email}</p>
-            <p><span className="text-gray-500">Instagram:</span> {r.instagram || "—"}</p>
-            <p><span className="text-gray-500">Estado civil:</span> {r.estado_civil}</p>
-            <p><span className="text-gray-500">Camisa:</span> {r.tamanho_camisa}</p>
-            <p className="sm:col-span-2"><span className="text-gray-500">Endereço:</span> {r.endereco}</p>
-            <p><span className="text-gray-500">Filhos:</span> {r.tem_filhos ? `Sim, ${r.quantidade_filhos} (${r.idades_filhos})` : "Não"}</p>
-            <p><span className="text-gray-500">Pessoas com quem mora:</span> {r.quantidade_pessoas_mora_junto ?? "Não informado"}</p>
-            <p><span className="text-gray-500">Quem são:</span> {r.mora_com_quem || r.mora_com || "—"}</p>
-            <p className="sm:col-span-2"><span className="text-gray-500">Emprego/ocupação dessas pessoas:</span> {r.emprego_ocupacao_pessoas_mora_junto || r.profissao_pessoas_mora_com || "—"}</p>
-            <p><span className="text-gray-500">Trabalha atualmente:</span> {r.trabalha_atualmente ? `Sim — ${r.cargo_atual}` : "Não"}</p>
-            <p><span className="text-gray-500">Disponibilidade p/ viajar:</span> {r.disponibilidade_viajar === "integral" ? "Integral" : r.disponibilidade_viajar === "parcial" ? "Parcial" : "Não tem"}</p>
-            {r.disponibilidade_viajar_explicacao && <p className="sm:col-span-2"><span className="text-gray-500">Explicação:</span> {r.disponibilidade_viajar_explicacao}</p>}
-            <p className="sm:col-span-2"><span className="text-gray-500">Conhecido no Grupo Eugênio:</span> {r.tem_conhecido_grupo ? `Sim — ${r.conhecido_nome} (${r.conhecido_relacao})` : "Não"}</p>
-            <p className="sm:col-span-2"><span className="text-gray-500">Origem da vaga:</span> {r.origem_vaga}</p>
-            <p className="sm:col-span-2">
-              <span className="text-gray-500">Renda extra:</span>{" "}
-              {r.renda_extra === "sim" ? `Sim — ${r.renda_extra_descricao || "sem descrição"}` : r.renda_extra === "nao" ? "Não" : r.renda_extra}
-            </p>
-            <p className="sm:col-span-2"><span className="text-gray-500">Formação:</span> {r.formacao}</p>
-            <p className="sm:col-span-2"><span className="text-gray-500">Quer aprender:</span> {r.habilidades_quer_aprender}</p>
-            <p><span className="text-gray-500">Internet em casa:</span> {r.internet_casa ? "Sim" : "Não"}</p>
-            <p><span className="text-gray-500">Android / iOS:</span> {[r.celular_android && "Android", r.celular_ios && "iOS"].filter(Boolean).join(", ") || "Nenhum"}</p>
-            <p className="sm:col-span-2"><span className="text-gray-500">Ferramentas:</span> {((r.ferramentas_json as string[]) || []).join(", ") || "—"}{r.ferramentas_outros ? ` · Outros: ${r.ferramentas_outros}` : ""}</p>
-            <p className="sm:col-span-2"><span className="text-gray-500">Horas livres:</span> {((r.horas_livres_json as string[]) || []).join(", ") || "—"}</p>
-          </div>
-          <div className="border-t pt-3 space-y-2">
-            <h4 className="font-semibold">Sobre você</h4>
-            {PERGUNTAS_SOBRE_VOCE.map((p) => (
-              <p key={p.key}><span className="text-gray-500">{p.label}</span><br />{sv[p.key] || "—"}</p>
-            ))}
-          </div>
+        <div className="space-y-4 text-sm">
+          <section className="card p-4">
+            <h2 className="font-bold text-base mb-3">Dados pessoais</h2>
+            <div className="grid gap-2 sm:grid-cols-2 sm:gap-x-6">
+              <p><span className="text-gray-500">Nome:</span> {r.nome_completo}</p>
+              <p><span className="text-gray-500">Idade:</span> {r.idade}</p>
+              <p><span className="text-gray-500">Sexo:</span> Não informado no formulário atual</p>
+              <p><span className="text-gray-500">Telefone:</span> {formatarTelefone(r.whatsapp)}</p>
+              <p><span className="text-gray-500">CPF:</span> {cpfPorPapel(r.cpf, acessoTotal)}</p>
+              <p className="break-all"><span className="text-gray-500">E-mail:</span> {r.email}</p>
+              <p><span className="text-gray-500">Estado civil:</span> {r.estado_civil}</p>
+              <p><span className="text-gray-500">Instagram:</span> {r.instagram || "—"}</p>
+              <p className="sm:col-span-2"><span className="text-gray-500">Endereço:</span> {r.endereco}</p>
+            </div>
+          </section>
+
+          <section className="card p-4">
+            <h2 className="font-bold text-base mb-3">Moradia</h2>
+            <div className="grid gap-2 sm:grid-cols-2 sm:gap-x-6">
+              <p><span className="text-gray-500">Quantidade de pessoas:</span> {r.quantidade_pessoas_mora_junto ?? "Não informado"}</p>
+              <p><span className="text-gray-500">Quem são:</span> {r.mora_com_quem || r.mora_com || "—"}</p>
+              <p className="sm:col-span-2"><span className="text-gray-500">Emprego/ocupação:</span> {r.emprego_ocupacao_pessoas_mora_junto || r.profissao_pessoas_mora_com || "—"}</p>
+            </div>
+          </section>
+
+          <section className="card p-4">
+            <h2 className="font-bold text-base mb-3">Disponibilidade e renda</h2>
+            <div className="grid gap-2 sm:grid-cols-2 sm:gap-x-6">
+              <p><span className="text-gray-500">Disponibilidade:</span> {r.disponibilidade_viajar === "integral" ? "Integral" : r.disponibilidade_viajar === "parcial" ? "Parcial" : "Não tem"}</p>
+              <p><span className="text-gray-500">Trabalha atualmente:</span> {r.trabalha_atualmente ? `Sim - ${r.cargo_atual}` : "Não"}</p>
+              {r.disponibilidade_viajar_explicacao && <p className="sm:col-span-2"><span className="text-gray-500">Explicação:</span> {r.disponibilidade_viajar_explicacao}</p>}
+              <p className="sm:col-span-2"><span className="text-gray-500">Renda extra:</span> {r.renda_extra === "sim" ? "Sim" : "Não"}</p>
+              {r.renda_extra === "sim" && <p className="sm:col-span-2"><span className="text-gray-500">Atividade:</span> {r.renda_extra_descricao || "—"}</p>}
+            </div>
+          </section>
+
+          <section className="card p-4">
+            <h2 className="font-bold text-base mb-3">Formação e experiência</h2>
+            <div className="space-y-2">
+              <p><span className="text-gray-500">Formação:</span> {r.formacao}</p>
+              <p><span className="text-gray-500">Experiências anteriores:</span> Não informado no formulário atual</p>
+              <p><span className="text-gray-500">Habilidades que deseja aprender:</span> {r.habilidades_quer_aprender}</p>
+              <p><span className="text-gray-500">Cursos:</span> Não informado no formulário atual</p>
+              <p><span className="text-gray-500">Ferramentas:</span> {((r.ferramentas_json as string[]) || []).join(", ") || "—"}{r.ferramentas_outros ? ` · Outros: ${r.ferramentas_outros}` : ""}</p>
+            </div>
+          </section>
+
+          <section className="card p-4">
+            <h2 className="font-bold text-base mb-3">Respostas abertas</h2>
+            <div className="space-y-3">
+              {PERGUNTAS_SOBRE_VOCE.map((pergunta) => (
+                <p key={pergunta.key}><span className="text-gray-500">{pergunta.label}</span><br />{sv[pergunta.key] || "—"}</p>
+              ))}
+            </div>
+          </section>
         </div>
       )}
 

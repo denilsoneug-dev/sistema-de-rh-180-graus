@@ -169,6 +169,7 @@ export async function enviarFichaPublica(token: string, formData: FormData): Pro
     curriculo_tamanho: cv.size,
     cpf,
     token_atual_hash: null, // link expira após envio
+    token_atual: null,
   }).eq("id", ficha.id);
   if (fichaError) {
     console.error(fichaError);

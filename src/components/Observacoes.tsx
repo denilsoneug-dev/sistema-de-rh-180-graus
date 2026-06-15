@@ -1,6 +1,6 @@
 import { criarObservacao, editarObservacao, apagarObservacao } from "@/app/actions/observacoes";
 import { fmtDataHora } from "@/lib/constants";
-import { ConfirmSubmit } from "@/components/ConfirmSubmit";
+import { ConfirmInline } from "@/components/ConfirmInline";
 
 type Obs = {
   id: string;
@@ -37,13 +37,22 @@ export function Observacoes({
                 {o.editado_em && " · editada"}
               </p>
               {podeEditar && (
-                <form action={apagarObservacao}>
-                  <input type="hidden" name="id" value={o.id} />
-                  <input type="hidden" name="path" value={path} />
-                  <ConfirmSubmit mensagem="Apagar esta observação?" className="text-xs text-red-400 hover:text-red-600">
-                    apagar
-                  </ConfirmSubmit>
-                </form>
+                <div className="flex items-center gap-3">
+                  <details>
+                    <summary className="cursor-pointer text-xs text-brand-700">editar</summary>
+                    <form action={editarObservacao} className="mt-2 space-y-2 min-w-[240px] sm:min-w-[360px]">
+                      <input type="hidden" name="id" value={o.id} />
+                      <input type="hidden" name="path" value={path} />
+                      <textarea name="texto" className="input min-h-[70px]" defaultValue={o.texto} required />
+                      <button className="btn-secondary text-xs w-full sm:w-auto">Salvar edição</button>
+                    </form>
+                  </details>
+                  <form action={apagarObservacao}>
+                    <input type="hidden" name="id" value={o.id} />
+                    <input type="hidden" name="path" value={path} />
+                    <ConfirmInline />
+                  </form>
+                </div>
               )}
             </div>
           </div>
@@ -55,7 +64,7 @@ export function Observacoes({
           <input type="hidden" name="entidade_id" value={entidadeId} />
           <input type="hidden" name="path" value={path} />
           <textarea name="texto" className="input min-h-[60px]" placeholder="Nova observação..." required />
-          <button className="btn-secondary text-sm">Adicionar observação</button>
+          <button className="btn-secondary text-sm w-full sm:w-auto">Adicionar observação</button>
         </form>
       )}
     </div>

@@ -8,6 +8,19 @@ export function formatarCpf(cpf: string | null | undefined): string {
   return `${c.slice(0, 3)}.${c.slice(3, 6)}.${c.slice(6, 9)}-${c.slice(9)}`;
 }
 
+// Máscara para papéis sem permissão de ver o CPF completo (ex.: "visualizacao").
+// Mantém os 3 primeiros e os 2 últimos dígitos; oculta o miolo. Ex.: 123.***.***-00
+export function mascararCpf(cpf: string | null | undefined): string {
+  const c = limparCpf(cpf || "");
+  if (c.length !== 11) return cpf ? "•••.•••.•••-••" : "—";
+  return `${c.slice(0, 3)}.***.***-${c.slice(9)}`;
+}
+
+// Conveniência: completo só para acesso total; mascarado para os demais.
+export function cpfPorPapel(cpf: string | null | undefined, acessoTotal: boolean): string {
+  return acessoTotal ? formatarCpf(cpf) : mascararCpf(cpf);
+}
+
 export function validarCpf(cpf: string): boolean {
   const c = limparCpf(cpf);
   if (c.length !== 11) return false;

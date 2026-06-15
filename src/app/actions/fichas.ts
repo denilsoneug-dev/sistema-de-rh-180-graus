@@ -8,9 +8,35 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAcessoTotal } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { limparCpf } from "@/lib/cpf";
+import { statusRecrutamentoValido } from "@/lib/rh";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
+}
+
+export async function atualizarStatusRecrutamento(fichaId: string, formData: FormData) {
+  const perfil = await requireAcessoTotal();
+  const status = String(formData.get("status_recrutamento") || "");
+  if (!statusRecrutamentoValido(status)) throw new Error("Status de recrutamento inválido");
+
+  const supabase = await createClient();
+  const { data: anterior } = await supabase.from("fichas")
+    .select("status_recrutamento").eq("id", fichaId).single();
+  const { error } = await supabase.from("fichas")
+    .update({ status_recrutamento: status }).eq("id", fichaId);
+  if (error) throw new Error(error.message);
+
+  await logAudit({
+    usuario_id: perfil.id,
+    usuario_nome: perfil.nome,
+    acao: "alterou_status_recrutamento",
+    entidade_tipo: "ficha",
+    entidade_id: fichaId,
+    dados_antes: { status_recrutamento: anterior?.status_recrutamento || null },
+    dados_depois: { status_recrutamento: status },
+  });
+  revalidatePath("/fichas");
+  revalidatePath(`/fichas/${fichaId}`);
 }
 
 async function diasExpiracao(): Promise<number> {
@@ -34,6 +60,7 @@ export async function criarFichaPendente(formData: FormData) {
     .insert({
       nome_inicial: nome,
       token_atual_hash: hashToken(token),
+      token_atual: token,
       status: "pendente",
       link_expira_em: expira,
       link_enviado_em: new Date().toISOString(),
@@ -59,6 +86,7 @@ export async function regerarLink(fichaId: string) {
     .from("fichas")
     .update({
       token_atual_hash: hashToken(token),
+      token_atual: token,
       status: "pendente",
       link_expira_em: expira,
       link_enviado_em: new Date().toISOString(),
