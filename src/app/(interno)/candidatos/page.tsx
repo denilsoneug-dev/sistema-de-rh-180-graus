@@ -5,6 +5,7 @@ import { cpfPorPapel } from "@/lib/cpf";
 import { ETAPA_LABELS, diasDesde, fmtData } from "@/lib/constants";
 import { mapResumosPorCandidatos } from "@/lib/requisitos";
 import { ResumoRequisitos } from "@/components/ResumoRequisitos";
+import { PainelCandidatos, type CandidatoEmProcesso } from "@/components/PainelCandidatos";
 import { STATUS_CANDIDATOS_EM_PROCESSO } from "@/lib/equipe-treinamento";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,24 @@ export default async function CandidatosPage({ searchParams }: { searchParams: P
   }
   const { data: candidatos } = await query;
   const resumos = await mapResumosPorCandidatos(supabase, candidatos || []);
+
+  // Aba "Em processo": prepara a lista para o painel com filtros + contagem de treinamento.
+  let listaEmProcesso: CandidatoEmProcesso[] = [];
+  let emTreinamentoCount = 0;
+  if (tab === "ativos") {
+    listaEmProcesso = (candidatos || []).map((c) => ({
+      id: c.id,
+      nome: c.nome,
+      cpf: c.cpf,
+      vaga_pretendida: c.vaga_pretendida,
+      status: c.status,
+      etapa_atual_desde: c.etapa_atual_desde,
+      resumo: resumos.get(c.id) ?? null,
+    }));
+    const { count } = await supabase
+      .from("candidatos").select("id", { count: "exact", head: true }).eq("status", "em_treinamento");
+    emTreinamentoCount = count ?? 0;
+  }
 
   // Para a aba "Contratados": localizar o registro de Equipe vinculado (origem = candidato).
   const equipePorCandidato = new Map<string, { id: string }>();
@@ -69,6 +88,9 @@ export default async function CandidatosPage({ searchParams }: { searchParams: P
           Histórico: pessoas que <span className="font-semibold">passaram pelo treinamento mas não foram aprovadas</span> para efetivação. Diferente de rejeitados na seleção.
         </div>
       )}
+      {tab === "ativos" ? (
+        <PainelCandidatos candidatos={listaEmProcesso} acessoTotal={acessoTotal} emTreinamentoCount={emTreinamentoCount} />
+      ) : (
       <div className="space-y-3">
         {(candidatos || []).length === 0 && <p className="text-gray-400 text-sm py-8 text-center">Nenhum candidato.</p>}
         {(candidatos || []).map((c) => {
@@ -113,6 +135,7 @@ export default async function CandidatosPage({ searchParams }: { searchParams: P
           );
         })}
       </div>
+      )}
     </div>
   );
 }
