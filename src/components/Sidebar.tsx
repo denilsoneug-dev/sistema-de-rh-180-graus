@@ -42,7 +42,7 @@ export function Sidebar() {
       </nav>
 
       <div className="px-5 py-4 text-[11px] text-brand-100/50">
-        © {new Date().getFullYear()} 180 Graus
+        © {new Date().getFullYear()} 180graus
       </div>
     </aside>
   );

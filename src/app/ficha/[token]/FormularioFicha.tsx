@@ -199,7 +199,7 @@ export function FormularioFicha({ token, nome }: { token: string; nome: string }
         <div className="card max-w-md w-full p-8 text-center animate-scale-in">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-3xl">✅</div>
           <h1 className="font-display text-xl font-extrabold mb-2 text-slate-900">Ficha enviada!</h1>
-          <p className="text-slate-600">Obrigado, {v("nome_completo").split(" ")[0]}. O recrutamento do 180 Graus recebeu sua ficha e vai entrar em contato.</p>
+          <p className="text-slate-600">Obrigado, {v("nome_completo").split(" ")[0]}. O recrutamento do 180graus recebeu sua ficha e vai entrar em contato.</p>
           <div className="mt-5 flex justify-center"><Logo size={34} /></div>
         </div>
       </main>

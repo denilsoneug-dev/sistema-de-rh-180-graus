@@ -82,7 +82,7 @@ export default async function Dashboard() {
         <h1 className="font-display text-2xl font-extrabold tracking-tight text-slate-900">
           Olá, bem-vindo de volta 👋
         </h1>
-        <p className="text-sm text-slate-500 mt-1">Visão geral do recrutamento e da equipe do 180 Graus.</p>
+        <p className="text-sm text-slate-500 mt-1">Visão geral do recrutamento e da equipe do 180graus.</p>
       </div>
 
       {temAtrasos && (

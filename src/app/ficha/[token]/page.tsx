@@ -10,15 +10,15 @@ export default async function FichaPublicaPage({ params }: { params: Promise<{ t
 
   if (!ficha.ok) {
     const msgs = {
-      nao_encontrada: "Este link não é válido. Confira com o recrutamento do 180 Graus.",
-      expirada: "Este link expirou. Peça um novo link ao recrutamento do 180 Graus.",
+      nao_encontrada: "Este link não é válido. Confira com o recrutamento do 180graus.",
+      expirada: "Este link expirou. Peça um novo link ao recrutamento do 180graus.",
       ja_enviada: "Esta ficha já foi enviada. Obrigado!",
     };
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
         <div className="card max-w-md w-full p-8 text-center animate-scale-in">
           <div className="mb-4 flex justify-center"><Logo size={48} showWordmark={false} /></div>
-          <h1 className="font-display text-xl font-extrabold mb-2 text-slate-900">180 Graus</h1>
+          <h1 className="font-display text-xl font-extrabold mb-2 text-slate-900">180graus</h1>
           <p className="text-slate-600">{msgs[ficha.motivo || "nao_encontrada"]}</p>
         </div>
       </main>

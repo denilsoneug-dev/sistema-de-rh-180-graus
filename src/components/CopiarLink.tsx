@@ -4,7 +4,7 @@ import { useState } from "react";
 
 export function CopiarLink({ link, nome }: { link: string; nome: string }) {
   const [copiado, setCopiado] = useState(false);
-  const msg = `Olá, ${nome}. Segue o link da sua ficha cadastral para o processo seletivo do 180 Graus:\n${link}\nPreencha todas as informações com atenção.`;
+  const msg = `Olá, ${nome}. Segue o link da sua ficha cadastral para o processo seletivo do 180graus:\n${link}\nPreencha todas as informações com atenção.`;
   const wa = `https://wa.me/?text=${encodeURIComponent(msg)}`;
 
   return (

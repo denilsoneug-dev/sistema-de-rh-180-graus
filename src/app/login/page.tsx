@@ -36,7 +36,7 @@ export default function LoginPage() {
         <div className="mb-6 flex flex-col items-center text-center">
           <Logo size={56} showWordmark={false} className="animate-float" />
           <h1 className="mt-4 font-display text-2xl font-extrabold tracking-tight text-slate-900">
-            180<span className="text-accent-500">Graus</span>
+            180<span className="text-accent-500">graus</span>
           </h1>
           <p className="text-sm text-slate-500">Sistema de Recrutamento</p>
         </div>
@@ -60,7 +60,7 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p className="mt-6 text-center text-xs text-slate-400">© {new Date().getFullYear()} 180 Graus · Recrutamento e Equipe</p>
+        <p className="mt-6 text-center text-xs text-slate-400">© {new Date().getFullYear()} 180graus · Recrutamento e Equipe</p>
       </div>
     </main>
   );

@@ -151,7 +151,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ tipo
     if (!ficha) return NextResponse.json({ error: "Não encontrada" }, { status: 404 });
     const r = Array.isArray(ficha.ficha_respostas) ? ficha.ficha_respostas[0] : ficha.ficha_respostas;
     nomeArquivo = `ficha-${(r?.nome_completo || ficha.nome_inicial).replace(/\s+/g, "-").toLowerCase()}`;
-    doc.titulo("180 Graus - Ficha Cadastral");
+    doc.titulo("180graus - Ficha Cadastral");
     doc.linha("Status", STATUS_FICHA_LABELS[ficha.status] || ficha.status);
     doc.linha("Enviada em", fmtDataHora(ficha.ficha_enviada_em));
     doc.linha("Currículo anexado", ficha.curriculo_url ? "Sim" : "Não");
@@ -161,7 +161,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ tipo
     const { data: c } = await supabase.from("candidatos").select("*").eq("id", id).single();
     if (!c) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
     nomeArquivo = `candidato-${c.nome.replace(/\s+/g, "-").toLowerCase()}`;
-    doc.titulo("180 Graus - Candidato em Processo");
+    doc.titulo("180graus - Candidato em Processo");
     doc.linha("Nome", c.nome);
     doc.linha("CPF", acessoTotal ? formatarCpf(c.cpf) : mascararCpf(c.cpf));
     doc.linha("Telefone", formatarTelefone(c.telefone || ""));
@@ -188,7 +188,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ tipo
     const { data: m } = await supabase.from("equipe").select("*").eq("id", id).single();
     if (!m) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
     nomeArquivo = `equipe-${m.nome.replace(/\s+/g, "-").toLowerCase()}`;
-    doc.titulo("180 Graus - Equipe Atual");
+    doc.titulo("180graus - Equipe Atual");
     doc.linha("Nome", m.nome);
     doc.linha("CPF", acessoTotal ? formatarCpf(m.cpf) : mascararCpf(m.cpf));
     doc.linha("Telefone", formatarTelefone(m.telefone));
