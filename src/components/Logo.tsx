@@ -15,9 +15,14 @@ export function Logo({
   const subColor = variant === "dark" ? "text-brand-100/80" : "text-slate-400";
   return (
     <span className={`inline-flex items-center gap-2.5 ${className}`}>
-      <span className="shimmer rounded-[28%] shadow-soft" style={{ width: size, height: size }}>
-        <Image src="/logo-180.svg" alt="180 Graus" width={size} height={size} priority />
-      </span>
+      <Image
+        src="/logo-180.png"
+        alt="180 Graus"
+        width={size}
+        height={size}
+        className="object-contain"
+        priority
+      />
       {showWordmark && (
         <span className="leading-none">
           <span className={`block font-display font-extrabold tracking-tight ${wordColor}`}>

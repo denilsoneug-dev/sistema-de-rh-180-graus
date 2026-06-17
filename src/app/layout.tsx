@@ -18,7 +18,7 @@ const sora = Sora({
 export const metadata: Metadata = {
   title: "Recrutamento 180 Graus",
   description: "Sistema interno de recrutamento e equipe do 180 Graus",
-  icons: { icon: "/icon.svg" },
+  icons: { icon: "/icon.png" },
 };
 
 export const viewport: Viewport = {

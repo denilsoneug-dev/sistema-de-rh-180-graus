@@ -1,23 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="180 Graus">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2E86E6"/>
-      <stop offset="1" stop-color="#1657C4"/>
-    </linearGradient>
-    <clipPath id="dome"><path d="M7 41 A25 25 0 0 1 57 41 Z"/></clipPath>
-  </defs>
-  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
-  <g clip-path="url(#dome)">
-  <path d="M32 41 L7.00 41.00 A25 25 0 0 1 8.51 32.45 Z" fill="#E5392B"/>
-  <path d="M32 41 L8.51 32.45 A25 25 0 0 1 12.85 24.93 Z" fill="#F26C1F"/>
-  <path d="M32 41 L12.85 24.93 A25 25 0 0 1 19.50 19.35 Z" fill="#F8A81C"/>
-  <path d="M32 41 L19.50 19.35 A25 25 0 0 1 27.66 16.38 Z" fill="#F26C1F"/>
-  <path d="M32 41 L27.66 16.38 A25 25 0 0 1 36.34 16.38 Z" fill="#E5392B"/>
-  <path d="M32 41 L36.34 16.38 A25 25 0 0 1 44.50 19.35 Z" fill="#F8A81C"/>
-  <path d="M32 41 L44.50 19.35 A25 25 0 0 1 51.15 24.93 Z" fill="#F26C1F"/>
-  <path d="M32 41 L51.15 24.93 A25 25 0 0 1 55.49 32.45 Z" fill="#E5392B"/>
-  <path d="M32 41 L55.49 32.45 A25 25 0 0 1 57.00 41.00 Z" fill="#F8A81C"/>
+  <g transform="translate(2 18) scale(0.5)">
+    <defs><clipPath id="df"><path d="M2 60 A 58 58 0 0 1 118 60 Z"/></clipPath></defs>
+    <g clip-path="url(#df)">
+  <path d="M60 60 Q 27.15 58.81 2.00 60.00 A 58 58 0 0 1 5.50 40.16 Z" fill="#E2231A"/>
+  <path d="M60 60 Q 29.54 47.65 5.50 40.16 A 58 58 0 0 1 15.57 22.72 Z" fill="#F39200"/>
+  <path d="M60 60 Q 35.60 37.97 15.57 22.72 A 58 58 0 0 1 31.00 9.77 Z" fill="#E2231A"/>
+  <path d="M60 60 Q 44.61 30.96 31.00 9.77 A 58 58 0 0 1 49.93 2.88 Z" fill="#FFD400"/>
+  <path d="M60 60 Q 55.47 27.44 49.93 2.88 A 58 58 0 0 1 70.07 2.88 Z" fill="#FFD400"/>
+  <path d="M60 60 Q 66.88 27.86 70.07 2.88 A 58 58 0 0 1 89.00 9.77 Z" fill="#E2231A"/>
+  <path d="M60 60 Q 77.46 32.15 89.00 9.77 A 58 58 0 0 1 104.43 22.72 Z" fill="#F39200"/>
+  <path d="M60 60 Q 85.93 39.80 104.43 22.72 A 58 58 0 0 1 114.50 40.16 Z" fill="#E2231A"/>
+  <path d="M60 60 Q 91.28 49.88 114.50 40.16 A 58 58 0 0 1 118.00 60.00 Z" fill="#F39200"/>
+    </g>
   </g>
-  <rect x="7" y="40.00" width="50" height="2.4" rx="1.2" fill="#fff" opacity="0.92"/>
-  <text x="32" y="59" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="15" fill="#fff" letter-spacing="-0.5">180</text>
 </svg>

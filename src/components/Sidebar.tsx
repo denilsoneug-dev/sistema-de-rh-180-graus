@@ -11,7 +11,7 @@ export function Sidebar() {
     <aside className="sidebar-grad hidden md:flex md:w-60 lg:w-64 md:flex-col md:fixed md:inset-y-0 md:left-0 z-30 text-white">
       <div className="px-5 py-5">
         <Link href="/" className="inline-flex">
-          <Logo variant="dark" size={38} />
+          <Logo variant="dark" size={56} />
         </Link>
       </div>
 
