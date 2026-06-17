@@ -13,10 +13,12 @@ export function Logo({
 }) {
   const wordColor = variant === "dark" ? "text-white" : "text-brand-800";
   const subColor = variant === "dark" ? "text-brand-100/80" : "text-slate-400";
+  // Fundo escuro (sidebar) usa logo com números brancos; fundo claro usa números pretos.
+  const src = variant === "dark" ? "/logo-180.png" : "/logo-180-dark.png";
   return (
     <span className={`inline-flex items-center gap-2.5 ${className}`}>
       <Image
-        src="/logo-180.png"
+        src={src}
         alt="180graus"
         width={size}
         height={size}
