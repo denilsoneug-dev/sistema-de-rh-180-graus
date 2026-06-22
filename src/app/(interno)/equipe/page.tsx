@@ -6,6 +6,7 @@ import { STATUS_EQUIPE_LABELS, fmtData } from "@/lib/constants";
 import { mapResumosPorCandidatos, mapResumosPorEquipe } from "@/lib/requisitos";
 import { ResumoRequisitos } from "@/components/ResumoRequisitos";
 import { EquipeEmTreinamento, type PessoaEmTreinamento } from "@/components/EquipeEmTreinamento";
+import { ExportarEquipeButton } from "@/components/ExportarEquipeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -79,7 +80,10 @@ export default async function EquipePage({ searchParams }: { searchParams: Promi
             <h1 className="text-xl font-bold">Equipe Atual</h1>
             <p className="text-sm text-gray-500">Pessoas em treinamento aparecem aqui sem criar vínculo definitivo na equipe.</p>
           </div>
-          {acessoTotal && <Link href="/equipe/nova" className="btn-primary">Cadastrar pessoa</Link>}
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <ExportarEquipeButton />
+            {acessoTotal && <Link href="/equipe/nova" className="btn-primary w-full sm:w-auto">Cadastrar pessoa</Link>}
+          </div>
         </div>
         <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
           {TABS.map((t) => (
@@ -103,9 +107,12 @@ export default async function EquipePage({ searchParams }: { searchParams: Promi
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-xl font-bold">Equipe Atual</h1>
-        {perfil?.papel === "acesso_total" && (
-          <Link href="/equipe/nova" className="btn-primary">Cadastrar pessoa</Link>
-        )}
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <ExportarEquipeButton />
+          {perfil?.papel === "acesso_total" && (
+            <Link href="/equipe/nova" className="btn-primary w-full sm:w-auto">Cadastrar pessoa</Link>
+          )}
+        </div>
       </div>
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
         {TABS.map((t) => (
