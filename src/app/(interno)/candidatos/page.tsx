@@ -37,23 +37,53 @@ export default async function CandidatosPage({ searchParams }: { searchParams: P
   }
   const { data: candidatos } = await query;
   const resumos = await mapResumosPorCandidatos(supabase, candidatos || []);
+  const indicadorIds = [...new Set((candidatos || []).map((c) => c.indicado_por_equipe_id).filter((id): id is string => !!id))];
+  const fichaIds = [...new Set((candidatos || []).map((c) => c.ficha_id).filter((id): id is string => !!id))];
+  const [{ data: indicadores }, { data: respostasIndicacao }] = await Promise.all([
+    indicadorIds.length > 0
+      ? supabase.from("equipe").select("id, nome").in("id", indicadorIds)
+      : Promise.resolve({ data: [] }),
+    fichaIds.length > 0
+      ? supabase.from("ficha_respostas").select("ficha_id, tem_conhecido_grupo, conhecido_nome, idade").in("ficha_id", fichaIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const nomeIndicador = new Map((indicadores || []).map((i) => [i.id, i.nome]));
+  const indicacaoFicha = new Map(
+    (respostasIndicacao || [])
+      .filter((r) => r.tem_conhecido_grupo && r.conhecido_nome)
+      .map((r) => [r.ficha_id, r.conhecido_nome]),
+  );
+  const idadePorFicha = new Map((respostasIndicacao || []).map((r) => [r.ficha_id, r.idade]));
 
-  // Aba "Em processo": prepara a lista para o painel com filtros + contagem de treinamento.
+  // Aba "Em processo": prepara a lista para o painel com filtros + contadores do funil.
   let listaEmProcesso: CandidatoEmProcesso[] = [];
   let emTreinamentoCount = 0;
+  let efetivadoCount = 0;
+  let rejeitadoCount = 0;
   if (tab === "ativos") {
     listaEmProcesso = (candidatos || []).map((c) => ({
       id: c.id,
       nome: c.nome,
       cpf: c.cpf,
+      telefone: c.telefone,
       vaga_pretendida: c.vaga_pretendida,
+      indicador_nome: c.indicado_por_equipe_id
+        ? nomeIndicador.get(c.indicado_por_equipe_id) || null
+        : (c.ficha_id ? indicacaoFicha.get(c.ficha_id) || null : null),
+      idade: c.ficha_id ? (idadePorFicha.get(c.ficha_id) ?? null) : null,
+      criado_em: c.criado_em,
       status: c.status,
       etapa_atual_desde: c.etapa_atual_desde,
       resumo: resumos.get(c.id) ?? null,
     }));
-    const { count } = await supabase
-      .from("candidatos").select("id", { count: "exact", head: true }).eq("status", "em_treinamento");
-    emTreinamentoCount = count ?? 0;
+    const [trein, efet, rej] = await Promise.all([
+      supabase.from("candidatos").select("id", { count: "exact", head: true }).eq("status", "em_treinamento"),
+      supabase.from("candidatos").select("id", { count: "exact", head: true }).eq("status", "efetivado"),
+      supabase.from("candidatos").select("id", { count: "exact", head: true }).eq("status", "rejeitado"),
+    ]);
+    emTreinamentoCount = trein.count ?? 0;
+    efetivadoCount = efet.count ?? 0;
+    rejeitadoCount = rej.count ?? 0;
   }
 
   // Para a aba "Contratados": localizar o registro de Equipe vinculado (origem = candidato).
@@ -89,7 +119,7 @@ export default async function CandidatosPage({ searchParams }: { searchParams: P
         </div>
       )}
       {tab === "ativos" ? (
-        <PainelCandidatos candidatos={listaEmProcesso} acessoTotal={acessoTotal} emTreinamentoCount={emTreinamentoCount} />
+        <PainelCandidatos candidatos={listaEmProcesso} acessoTotal={acessoTotal} emTreinamentoCount={emTreinamentoCount} efetivadoCount={efetivadoCount} rejeitadoCount={rejeitadoCount} />
       ) : (
       <div className="space-y-3">
         {(candidatos || []).length === 0 && <p className="text-gray-400 text-sm py-8 text-center">Nenhum candidato.</p>}

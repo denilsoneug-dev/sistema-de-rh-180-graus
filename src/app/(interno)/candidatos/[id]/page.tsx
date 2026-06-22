@@ -2,20 +2,38 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPerfil } from "@/lib/auth";
-import { registrarEtapa, rejeitarCandidato, efetivarCandidato, encerrarTreinamento } from "@/app/actions/candidatos";
+import { registrarEtapa, rejeitarCandidato, efetivarCandidato, encerrarTreinamento, voltarEtapa } from "@/app/actions/candidatos";
 import { salvarRequisitosCandidato } from "@/app/actions/requisitos";
 import { formatarTelefone, cpfPorPapel } from "@/lib/cpf";
-import { ETAPA_LABELS, diasDesde, fmtData, fmtDataHora, resumoComOverride } from "@/lib/constants";
+import { ETAPA_LABELS, diasDesde, fmtData, resumoComOverride } from "@/lib/constants";
 import { candidatoEstaEmProcesso } from "@/lib/equipe-treinamento";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { Observacoes } from "@/components/Observacoes";
 import { ResumoRequisitos } from "@/components/ResumoRequisitos";
 import { EditarRequisitos } from "@/components/EditarRequisitos";
+import { Timeline, type EventoTimeline } from "@/components/Timeline";
+
+const RESULTADO_LABEL: Record<string, string> = {
+  passou: "Passou",
+  nao_passou: "Não passou",
+  ainda_nao_sabe: "Ainda não sabe",
+  aprovado: "Aprovado",
+  reprovado: "Reprovado",
+  em_andamento: "Em andamento",
+};
+
+function jsonField(v: unknown, key: string): string | null {
+  if (v && typeof v === "object" && key in (v as Record<string, unknown>)) {
+    const val = (v as Record<string, unknown>)[key];
+    return val == null ? null : String(val);
+  }
+  return null;
+}
 
 export const dynamic = "force-dynamic";
 
-export default async function CandidatoDetalhe({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function CandidatoDetalhe({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ origem?: string }> }) {
+  const [{ id }, { origem }] = await Promise.all([params, searchParams]);
   const perfil = await getPerfil();
   const acessoTotal = perfil?.papel === "acesso_total";
   const supabase = await createClient();
@@ -41,6 +59,9 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
     ? (equipe || []).find((m) => m.id === c.indicado_por_equipe_id) ||
       (await supabase.from("equipe").select("id, nome").eq("id", c.indicado_por_equipe_id).maybeSingle()).data
     : null;
+  const indicacaoFicha = !indicador && r?.tem_conhecido_grupo && r?.conhecido_nome
+    ? String(r.conhecido_nome)
+    : null;
 
   const emSelecao = candidatoEstaEmProcesso(c.status); // entrevistas + redação (fonte única)
   const isTreinamento = c.status === "em_treinamento";
@@ -48,9 +69,98 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
   const podeRegistrar = emSelecao || isTreinamento; // registrar etapa vale p/ seleção e treinamento
   const treinamentoAprovado = (etapas || []).some((e) => e.tipo_etapa === "treinamento" && e.resultado === "aprovado");
   const dias = diasDesde(c.etapa_atual_desde);
+  const ordemEtapas = ["entrevista_online", "entrevista_presencial", "redacao_escrita", "em_treinamento"] as const;
+  const etapaAtualIdx = ordemEtapas.indexOf(c.status as (typeof ordemEtapas)[number]);
+  const proximasEtapas = etapaAtualIdx >= 0 ? ordemEtapas.slice(etapaAtualIdx + 1) : [];
+  const etapaSugerida = proximasEtapas[0];
+  // Etapas anteriores (para "voltar etapa")
+  const etapasAnteriores = etapaAtualIdx > 0 ? ordemEtapas.slice(0, etapaAtualIdx) : [];
+  const podeVoltar = (emSelecao || isTreinamento) && etapasAnteriores.length > 0;
+
+  // ---- Linha do tempo (timeline) ----
+  const eventos: EventoTimeline[] = [];
+
+  // Marcos com autor vêm do audit_logs (RLS: somente acesso_total lê).
+  if (acessoTotal) {
+    const [{ data: logsFicha }, { data: logsCand }] = await Promise.all([
+      c.ficha_id
+        ? supabase.from("audit_logs")
+            .select("acao, usuario_nome, criado_em")
+            .eq("entidade_tipo", "ficha").eq("entidade_id", c.ficha_id)
+            .in("acao", ["selecionou_para_processo", "selecionou_para_processo_idempotente"])
+        : Promise.resolve({ data: [] as { acao: string; usuario_nome: string | null; criado_em: string }[] }),
+      supabase.from("audit_logs")
+        .select("acao, usuario_nome, dados_antes, dados_depois, criado_em")
+        .eq("entidade_tipo", "candidato").eq("entidade_id", id),
+    ]);
+
+    for (const l of logsFicha || []) {
+      eventos.push({ ts: l.criado_em, titulo: "Ficha selecionada para o processo", detalhe: "Candidato gerado automaticamente.", autor: l.usuario_nome, tom: "brand" });
+    }
+    for (const l of (logsCand || []) as { acao: string; usuario_nome: string | null; dados_antes: unknown; dados_depois: unknown; criado_em: string }[]) {
+      const de = jsonField(l.dados_antes, "etapa");
+      const para = jsonField(l.dados_depois, "etapa");
+      if (l.acao === "mudou_etapa" && para) {
+        eventos.push({ ts: l.criado_em, titulo: `Avançou para ${ETAPA_LABELS[para] || para}`, detalhe: de ? `De ${ETAPA_LABELS[de] || de}` : null, autor: l.usuario_nome, tom: "brand" });
+      } else if (l.acao === "voltou_etapa" && para) {
+        eventos.push({ ts: l.criado_em, titulo: `Voltou para ${ETAPA_LABELS[para] || para}`, detalhe: de ? `De ${ETAPA_LABELS[de] || de}` : null, autor: l.usuario_nome, tom: "amber" });
+      } else if (l.acao === "rejeitou_candidato") {
+        eventos.push({ ts: l.criado_em, titulo: "Candidato rejeitado", detalhe: jsonField(l.dados_depois, "motivo"), autor: l.usuario_nome, tom: "red" });
+      } else if (l.acao === "encerrou_treinamento") {
+        eventos.push({ ts: l.criado_em, titulo: "Treinamento encerrado (não aprovado)", detalhe: jsonField(l.dados_depois, "motivo"), autor: l.usuario_nome, tom: "amber" });
+      } else if (l.acao === "efetivou_candidato") {
+        eventos.push({ ts: l.criado_em, titulo: "Efetivado na equipe", autor: l.usuario_nome, tom: "emerald" });
+      }
+    }
+  }
+
+  // Gênese (sempre).
+  eventos.push({ ts: c.criado_em, titulo: "Candidato criado — Entrevista online", tom: "brand" });
+
+  // Registros detalhados de cada etapa (sempre).
+  for (const e of etapas || []) {
+    const partes: string[] = [];
+    if (e.resultado) partes.push(`Resultado: ${RESULTADO_LABEL[e.resultado as string] || e.resultado}`);
+    if (e.data) partes.push(`Quando: ${fmtData(e.data)}${e.horario ? ` às ${String(e.horario).slice(0, 5)}` : ""}`);
+    if (e.observacoes) partes.push(String(e.observacoes));
+    const ok = e.resultado === "passou" || e.resultado === "aprovado";
+    const ruim = e.resultado === "nao_passou" || e.resultado === "reprovado";
+    eventos.push({
+      ts: e.criado_em,
+      titulo: `Registro: ${ETAPA_LABELS[e.tipo_etapa as string] || e.tipo_etapa}`,
+      detalhe: partes.join("\n") || null,
+      autor: e.entrevistador_nome,
+      tom: ok ? "emerald" : ruim ? "red" : "slate",
+      link: e.arquivo_url && acessoTotal
+        ? { href: `/api/arquivo?bucket=redacoes&path=${encodeURIComponent(e.arquivo_url)}`, label: "Ver redação anexada" }
+        : null,
+    });
+  }
+
+  // Fallback para visualização (sem acesso ao audit_logs).
+  if (!acessoTotal) {
+    if (c.status === "rejeitado" && c.rejeitado_em) eventos.push({ ts: c.rejeitado_em, titulo: "Candidato rejeitado", detalhe: c.rejeicao_motivo, tom: "red" });
+    if (c.status === "treinamento_encerrado" && c.rejeitado_em) eventos.push({ ts: c.rejeitado_em, titulo: "Treinamento encerrado", detalhe: c.rejeicao_motivo, tom: "amber" });
+    if (c.efetivado_em) eventos.push({ ts: c.efetivado_em, titulo: "Efetivado na equipe", tom: "emerald" });
+  }
+
+  eventos.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
 
   return (
     <div className="space-y-4 max-w-3xl">
+      {origem === "candidato-criado" && (
+        <div className="card border-l-4 border-l-emerald-500 bg-emerald-50/60 p-4 text-sm text-emerald-800">
+          <p className="font-semibold">Candidato criado com sucesso.</p>
+          <p>Etapa inicial: Entrevista online.</p>
+        </div>
+      )}
+      {origem === "ficha-ja-convertida" && (
+        <div className="card border-l-4 border-l-brand-500 bg-brand-50/60 p-4 text-sm text-brand-800">
+          <p className="font-semibold">Esta ficha já foi convertida em candidato.</p>
+          <p>O sistema abriu o candidato existente para evitar duplicidade.</p>
+        </div>
+      )}
+
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold">{c.nome}</h1>
@@ -82,7 +192,7 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
         semFichaMsg="Requisitos não informados (sem ficha vinculada)."
       />
       <div className="card p-4 text-sm">
-        <p><span className="text-gray-500">Quem indicou:</span> {indicador?.nome || "Sem indicação informada"}</p>
+        <p><span className="text-gray-500">Quem indicou:</span> {indicador?.nome || indicacaoFicha || "Sem indicação informada"}</p>
       </div>
       {acessoTotal && <EditarRequisitos action={salvarRequisitosCandidato.bind(null, c.id)} valores={c} />}
 
@@ -99,6 +209,12 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
       {podeRegistrar && acessoTotal && (
         <div className="card p-4 space-y-3">
           <h3 className="font-bold">{isTreinamento ? "Registrar acompanhamento do treinamento" : `Registrar ${ETAPA_LABELS[c.status as string]?.toLowerCase()}`}</h3>
+          {!isTreinamento && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              <p className="font-medium text-slate-700">Fluxo recomendado</p>
+              <p>Entrevista online → Entrevista presencial → Redação escrita → Em treinamento → Efetivação.</p>
+            </div>
+          )}
           <form action={registrarEtapa.bind(null, c.id)} className="space-y-3">
             <div className="grid sm:grid-cols-3 gap-3">
               <div>
@@ -158,6 +274,18 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
                 )}
               </select>
             </div>
+            {!isTreinamento && etapaSugerida && (
+              <div>
+                <label className="label">Se passar, enviar para</label>
+                <select name="proxima_etapa" className="input" defaultValue={etapaSugerida}>
+                  {proximasEtapas.map((etapa) => (
+                    <option key={etapa} value={etapa}>
+                      {ETAPA_LABELS[etapa]}{etapa === etapaSugerida ? " (próxima recomendada)" : " (pular etapa)"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <button className="btn-primary w-full sm:w-auto">Salvar registro</button>
           </form>
         </div>
@@ -219,6 +347,26 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
         </div>
       )}
 
+      {podeVoltar && acessoTotal && (
+        <div className="card p-4">
+          <h3 className="font-bold mb-2">Voltar etapa</h3>
+          <p className="text-sm text-gray-500 mb-2">Use em caso de erro para devolver o candidato a uma etapa anterior. O histórico é mantido.</p>
+          <form action={voltarEtapa.bind(null, c.id)} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="flex-1 min-w-48">
+              <label className="label">Voltar para</label>
+              <select name="etapa_destino" className="input" defaultValue={etapasAnteriores[etapasAnteriores.length - 1]}>
+                {etapasAnteriores.map((etapa) => (
+                  <option key={etapa} value={etapa}>{ETAPA_LABELS[etapa]}</option>
+                ))}
+              </select>
+            </div>
+            <ConfirmSubmit mensagem="Voltar o candidato para a etapa anterior?" className="btn-secondary w-full sm:w-auto">
+              Voltar etapa
+            </ConfirmSubmit>
+          </form>
+        </div>
+      )}
+
       {isTreinamento && acessoTotal && (
         <div className="card p-4">
           <h3 className="font-bold mb-2">Encerrar treinamento</h3>
@@ -233,29 +381,8 @@ export default async function CandidatoDetalhe({ params }: { params: Promise<{ i
       )}
 
       <div className="card p-4">
-        <h3 className="font-bold mb-3">Histórico de etapas</h3>
-        <div className="space-y-3">
-          {(etapas || []).length === 0 && <p className="text-sm text-gray-400">Nenhum registro ainda.</p>}
-          {(etapas || []).map((e) => (
-            <div key={e.id} className="border-b border-gray-100 pb-3 last:border-0 text-sm">
-              <div className="flex justify-between flex-wrap gap-1">
-                <p className="font-semibold">{ETAPA_LABELS[e.tipo_etapa as string]}</p>
-                <span className={`badge ${e.resultado === "passou" || e.resultado === "aprovado" ? "bg-green-100 text-green-800" : e.resultado === "nao_passou" || e.resultado === "reprovado" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"}`}>
-                  {e.resultado === "passou" ? "Passou" : e.resultado === "nao_passou" ? "Não passou" : e.resultado === "ainda_nao_sabe" ? "Ainda não sabe" : e.resultado === "aprovado" ? "Aprovado" : e.resultado === "reprovado" ? "Reprovado" : e.resultado === "em_andamento" ? "Em andamento" : "—"}
-                </span>
-              </div>
-              <p className="text-gray-500">
-                {fmtData(e.data)}{e.horario ? ` às ${String(e.horario).slice(0, 5)}` : ""}{e.duracao_minutos ? ` · ${e.duracao_minutos} min` : ""}
-                {e.entrevistador_nome ? ` · Entrevistou: ${e.entrevistador_nome}` : ""}
-              </p>
-              {e.observacoes && <p className="text-gray-600 mt-1">{e.observacoes}</p>}
-              {e.arquivo_url && acessoTotal && (
-                <a className="text-brand-700 underline" href={`/api/arquivo?bucket=redacoes&path=${encodeURIComponent(e.arquivo_url)}`} target="_blank">Ver redação anexada</a>
-              )}
-              <p className="text-xs text-gray-400 mt-1">Registrado em {fmtDataHora(e.criado_em)}</p>
-            </div>
-          ))}
-        </div>
+        <h3 className="font-bold mb-4">Linha do tempo</h3>
+        <Timeline eventos={eventos} />
       </div>
 
       {c.status === "rejeitado" && (

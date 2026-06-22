@@ -1,14 +1,16 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getPerfil } from "@/lib/auth";
-import { atualizarStatusRecrutamento, regerarLink, arquivarFicha, rejeitarFicha, selecionarParaProcesso } from "@/app/actions/fichas";
+import { atualizarStatusRecrutamento, regerarLink, arquivarFicha, rejeitarFicha, selecionarParaProcesso, editarRespostasFicha } from "@/app/actions/fichas";
 import { formatarTelefone, cpfPorPapel } from "@/lib/cpf";
-import { resumoRequisitos, fmtData, fmtDataHora, PERGUNTAS_SOBRE_VOCE, STATUS_FICHA_LABELS } from "@/lib/constants";
+import { ETAPA_LABELS, resumoRequisitos, fmtData, fmtDataHora, PERGUNTAS_SOBRE_VOCE, STATUS_FICHA_LABELS } from "@/lib/constants";
 import { CopiarLink } from "@/components/CopiarLink";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { Observacoes } from "@/components/Observacoes";
 import { ResumoRequisitos } from "@/components/ResumoRequisitos";
-import { STATUS_RECRUTAMENTO, STATUS_RECRUTAMENTO_CLASSES, STATUS_RECRUTAMENTO_LABELS, statusRecrutamentoValido, type StatusRecrutamento } from "@/lib/rh";
+import { EditarRespostasFicha } from "@/components/EditarRespostasFicha";
+import { STATUS_RECRUTAMENTO_FICHA, STATUS_RECRUTAMENTO_CLASSES, STATUS_RECRUTAMENTO_LABELS, statusRecrutamentoValido, statusFichaAnaliseValido, type StatusRecrutamento } from "@/lib/rh";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,28 @@ export default async function FichaDetalhe({ params, searchParams }: { params: P
   const { data: ficha } = await supabase.from("fichas").select("*, ficha_respostas(*)").eq("id", id).single();
   if (!ficha) notFound();
   const r = Array.isArray(ficha.ficha_respostas) ? ficha.ficha_respostas[0] : ficha.ficha_respostas;
+  const cpfFicha = r?.cpf || ficha.cpf || "";
+
+  let candidatoConvertido: { id: string; status: string; etapa_atual: string | null } | null = null;
+  if (ficha.status === "selecionada") {
+    const { data: candidatoPorFicha } = await supabase
+      .from("candidatos")
+      .select("id, status, etapa_atual")
+      .eq("ficha_id", id)
+      .limit(1)
+      .maybeSingle();
+    candidatoConvertido = candidatoPorFicha;
+
+    if (!candidatoConvertido && cpfFicha) {
+      const { data: candidatoPorCpf } = await supabase
+        .from("candidatos")
+        .select("id, status, etapa_atual")
+        .eq("cpf", cpfFicha.replace(/\D/g, ""))
+        .limit(1)
+        .maybeSingle();
+      candidatoConvertido = candidatoPorCpf;
+    }
+  }
 
   const { data: obs } = await supabase.from("observacoes")
     .select("*").eq("entidade_tipo", "ficha").eq("entidade_id", id)
@@ -61,22 +85,25 @@ export default async function FichaDetalhe({ params, searchParams }: { params: P
         <div>
           <h1 className="text-xl font-bold break-words">{r?.nome_completo || ficha.nome_inicial}</h1>
           <div className="mt-1 flex flex-wrap gap-2">
-            <span className={`badge ${STATUS_RECRUTAMENTO_CLASSES[statusRh]}`}>{STATUS_RECRUTAMENTO_LABELS[statusRh]}</span>
+            {ficha.status === "recebida" && (
+              <span className={`badge ${STATUS_RECRUTAMENTO_CLASSES[statusRh]}`}>{STATUS_RECRUTAMENTO_LABELS[statusRh]}</span>
+            )}
             <span className="badge bg-gray-100 text-gray-700">Ficha: {STATUS_FICHA_LABELS[ficha.status]}</span>
           </div>
         </div>
         {r && <a className="btn-secondary w-full sm:w-auto" href={`/api/pdf/ficha/${ficha.id}`} target="_blank">Exportar PDF</a>}
       </div>
 
-      {r && (
+      {r && ficha.status === "recebida" && (
         <div className="card p-4">
-          <h2 className="font-bold mb-3">Status do recrutamento</h2>
+          <h2 className="font-bold mb-1">Status da análise</h2>
+          <p className="text-sm text-gray-500 mb-3">Esta etapa é só a análise inicial da ficha. As etapas de entrevista ficam em Candidatos, após aprovar para o processo.</p>
           {acessoTotal ? (
             <form action={atualizarStatusRecrutamento.bind(null, ficha.id)} className="flex flex-col gap-2 sm:flex-row sm:items-end">
               <div className="flex-1">
                 <label className="label" htmlFor="status-recrutamento">Status atual</label>
-                <select id="status-recrutamento" name="status_recrutamento" className="input" defaultValue={statusRh}>
-                  {STATUS_RECRUTAMENTO.map((status) => <option key={status} value={status}>{STATUS_RECRUTAMENTO_LABELS[status]}</option>)}
+                <select id="status-recrutamento" name="status_recrutamento" className="input" defaultValue={statusFichaAnaliseValido(statusRh) ? statusRh : "nova_ficha"}>
+                  {STATUS_RECRUTAMENTO_FICHA.map((status) => <option key={status} value={status}>{STATUS_RECRUTAMENTO_LABELS[status]}</option>)}
                 </select>
               </div>
               <button className="btn-primary w-full sm:w-auto">Salvar status</button>
@@ -94,6 +121,36 @@ export default async function FichaDetalhe({ params, searchParams }: { params: P
             Nome anterior: {rejeicaoAnterior.nome} · Rejeitada em {fmtData(rejeicaoAnterior.data)}
             {rejeicaoAnterior.motivo && ` · Motivo: ${rejeicaoAnterior.motivo}`}
           </p>
+        </div>
+      )}
+
+      {ficha.status === "selecionada" && (
+        <div className={`card p-4 border-l-4 ${candidatoConvertido ? "border-l-emerald-500 bg-emerald-50/60" : "border-l-amber-500 bg-amber-50/60"}`}>
+          {candidatoConvertido ? (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold text-emerald-800">Esta ficha já foi aprovada e convertida em candidato.</p>
+                <p className="mt-1 text-sm text-emerald-700">
+                  Estado atual: {candidatoConvertido.status === "em_treinamento" ? "Em treinamento" : candidatoConvertido.status === "efetivado" ? "Efetivado" : "Em processo"} — {ETAPA_LABELS[(candidatoConvertido.etapa_atual || candidatoConvertido.status) as string] || candidatoConvertido.status}
+                </p>
+              </div>
+              <Link href={`/candidatos/${candidatoConvertido.id}`} className="btn-primary w-full sm:w-auto">Ver candidato</Link>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <p className="font-semibold text-amber-800">Ficha selecionada sem candidato vinculado</p>
+                <p className="mt-1 text-sm text-amber-700">Use a ação abaixo para corrigir a conversão sem criar duplicidade.</p>
+              </div>
+              {acessoTotal && (
+                <form action={selecionarParaProcesso.bind(null, ficha.id)} className="inline-flex">
+                  <ConfirmSubmit mensagem="Converter esta ficha selecionada em candidato, sem duplicar se já existir por CPF?" className="btn-primary w-full sm:w-auto">
+                    Criar candidato do processo
+                  </ConfirmSubmit>
+                </form>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -123,7 +180,10 @@ export default async function FichaDetalhe({ params, searchParams }: { params: P
 
       {ficha.status === "recebida" && acessoTotal && (
         <div className="card p-4 space-y-4">
-          <h3 className="font-bold">Ações</h3>
+          <div>
+            <h3 className="font-bold">Ações</h3>
+            <p className="text-sm text-gray-500">Analise a ficha e escolha uma ação.</p>
+          </div>
           <form action={selecionarParaProcesso.bind(null, ficha.id)} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
             <div className="flex-1 min-w-48">
               <label className="label">Quem indicou (opcional)</label>
@@ -132,8 +192,8 @@ export default async function FichaDetalhe({ params, searchParams }: { params: P
                 {(equipe || []).map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
               </select>
             </div>
-            <ConfirmSubmit mensagem="Selecionar esta ficha para o processo seletivo? O candidato entrará na etapa Entrevista online." className="btn-primary w-full sm:w-auto">
-              Selecionar para processo
+            <ConfirmSubmit mensagem="Aprovar esta ficha para o processo seletivo? Ela vira candidato na etapa Entrevista online." className="btn-primary w-full sm:w-auto">
+              Aprovar para processo seletivo
             </ConfirmSubmit>
           </form>
           <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:flex-wrap sm:items-end">
@@ -167,6 +227,10 @@ export default async function FichaDetalhe({ params, searchParams }: { params: P
             <a className="btn-secondary flex-1 sm:flex-none" href={`/api/arquivo?bucket=curriculos&path=${encodeURIComponent(ficha.curriculo_url)}&download=1`}>Baixar</a>
           </div>
         </div>
+      )}
+
+      {r && acessoTotal && (
+        <EditarRespostasFicha action={editarRespostasFicha.bind(null, ficha.id)} respostas={r} />
       )}
 
       {r && (

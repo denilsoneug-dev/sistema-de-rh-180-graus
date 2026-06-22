@@ -40,6 +40,7 @@ export default async function FichasPage({ searchParams }: { searchParams: Promi
       nome: resposta?.nome_completo || ficha.nome_inicial,
       idade: resposta?.idade ?? null,
       telefone: resposta?.whatsapp || "",
+      cpf: resposta?.cpf || ficha.cpf || null,
       email: resposta?.email || "",
       statusRecrutamento: status,
       statusFicha: ficha.status,
@@ -53,21 +54,34 @@ export default async function FichasPage({ searchParams }: { searchParams: Promi
   // Em "Selecionadas": mostra o estado atual (a ficha já virou candidato/treinamento/equipe).
   if (tab === "selecionada" && itens.length > 0) {
     const ids = itens.map((i) => i.id);
-    const { data: cands } = await supabase.from("candidatos").select("ficha_id, status").in("ficha_id", ids);
+    const cpfs = itens.map((i) => i.cpf?.replace(/\D/g, "")).filter((cpf): cpf is string => !!cpf);
+    const [{ data: candsPorFicha }, { data: candsPorCpf }] = await Promise.all([
+      supabase.from("candidatos").select("id, ficha_id, cpf, status, etapa_atual").in("ficha_id", ids),
+      cpfs.length > 0
+        ? supabase.from("candidatos").select("id, ficha_id, cpf, status, etapa_atual").in("cpf", cpfs)
+        : Promise.resolve({ data: [] }),
+    ]);
     const LABEL: Record<string, string> = {
-      entrevista_online: "Em processo (seleção)",
-      entrevista_presencial: "Em processo (seleção)",
-      redacao_escrita: "Em processo (seleção)",
-      em_treinamento: "Em treinamento (Equipe)",
+      entrevista_online: "Em processo — Entrevista online",
+      entrevista_presencial: "Em processo — Entrevista presencial",
+      redacao_escrita: "Em processo — Redação escrita",
+      em_treinamento: "Equipe — Em treinamento",
       efetivado: "Contratado(a) — na Equipe",
       rejeitado: "Rejeitado(a) no processo",
       treinamento_encerrado: "Treinamento encerrado",
     };
-    const estado = new Map<string, string>();
-    for (const c of cands || []) {
-      if (c.ficha_id) estado.set(c.ficha_id as string, LABEL[c.status as string] || c.status);
+    const porFicha = new Map<string, { id: string; status: string }>();
+    const porCpf = new Map<string, { id: string; status: string }>();
+    for (const c of [...(candsPorFicha || []), ...(candsPorCpf || [])]) {
+      const ref = { id: c.id as string, status: c.status as string };
+      if (c.ficha_id) porFicha.set(c.ficha_id as string, ref);
+      if (c.cpf) porCpf.set(String(c.cpf), ref);
     }
-    for (const it of itens) it.estadoAtual = estado.get(it.id) ?? "Aguardando conversão";
+    for (const it of itens) {
+      const cand = porFicha.get(it.id) || (it.cpf ? porCpf.get(it.cpf.replace(/\D/g, "")) : undefined);
+      it.estadoAtual = cand ? LABEL[cand.status] || cand.status : "Aguardando conversão";
+      it.candidatoId = cand?.id || null;
+    }
   }
 
   return (

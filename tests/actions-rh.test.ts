@@ -18,7 +18,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     from: () => ({
       select: () => ({
-        eq: () => ({ single: async () => ({ data: { status_recrutamento: "nova_ficha" } }) }),
+        eq: () => ({ single: async () => ({ data: { status: "recebida", status_recrutamento: "nova_ficha" } }) }),
       }),
       update: (payload: Record<string, unknown>) => {
         mocks.updates.push(payload);

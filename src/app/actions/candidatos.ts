@@ -13,6 +13,13 @@ const PROXIMA_ETAPA: Record<string, string> = {
   redacao_escrita: "em_treinamento",
 };
 
+const ORDEM_ETAPAS = [
+  "entrevista_online",
+  "entrevista_presencial",
+  "redacao_escrita",
+  "em_treinamento",
+] as const;
+
 const ETAPA_TO_TIPO: Record<string, string> = {
   entrevista_online: "entrevista_online",
   entrevista_presencial: "entrevista_presencial",
@@ -62,7 +69,11 @@ export async function registrarEtapa(candidatoId: string, formData: FormData) {
 
   // Avanço de etapa
   if (resultado === "passou" && PROXIMA_ETAPA[cand.status as string]) {
-    const prox = PROXIMA_ETAPA[cand.status as string];
+    const sugerida = PROXIMA_ETAPA[cand.status as string];
+    const escolhida = String(formData.get("proxima_etapa") || sugerida);
+    const atualIdx = ORDEM_ETAPAS.indexOf(cand.status as (typeof ORDEM_ETAPAS)[number]);
+    const proxIdx = ORDEM_ETAPAS.indexOf(escolhida as (typeof ORDEM_ETAPAS)[number]);
+    const prox = atualIdx >= 0 && proxIdx > atualIdx ? escolhida : sugerida;
     await supabase.from("candidatos").update({
       status: prox,
       etapa_atual: ETAPA_TO_TIPO[prox],
@@ -72,6 +83,50 @@ export async function registrarEtapa(candidatoId: string, formData: FormData) {
   }
 
   await logAudit({ usuario_id: perfil.id, usuario_nome: perfil.nome, acao: `registrou_${tipoEtapa}`, entidade_tipo: "candidato", entidade_id: candidatoId, dados_depois: { resultado } });
+  revalidatePath(`/candidatos/${candidatoId}`);
+  revalidatePath("/candidatos");
+}
+
+// Volta o candidato para a etapa anterior (correção de erro). Mantém todo o
+// histórico de etapas; apenas ajusta o status/etapa atual e registra no audit.
+const ORDEM_VOLTAR = [
+  "entrevista_online",
+  "entrevista_presencial",
+  "redacao_escrita",
+  "em_treinamento",
+] as const;
+
+export async function voltarEtapa(candidatoId: string, formData: FormData) {
+  const perfil = await requireAcessoTotal();
+  const supabase = await createClient();
+
+  const { data: cand } = await supabase.from("candidatos").select("status").eq("id", candidatoId).single();
+  if (!cand) throw new Error("Candidato não encontrado");
+  const idx = ORDEM_VOLTAR.indexOf(cand.status as (typeof ORDEM_VOLTAR)[number]);
+  if (idx <= 0) throw new Error("O candidato já está na primeira etapa do processo.");
+
+  const destinoEscolhido = String(formData.get("etapa_destino") || "");
+  const anterior = ORDEM_VOLTAR[idx - 1];
+  const destinoIdx = ORDEM_VOLTAR.indexOf(destinoEscolhido as (typeof ORDEM_VOLTAR)[number]);
+  // Só permite voltar para uma etapa ANTERIOR à atual; default = imediatamente anterior.
+  const destino = destinoIdx >= 0 && destinoIdx < idx ? destinoEscolhido : anterior;
+
+  const { error } = await supabase.from("candidatos").update({
+    status: destino,
+    etapa_atual: ETAPA_TO_TIPO[destino],
+    etapa_atual_desde: new Date().toISOString(),
+  }).eq("id", candidatoId);
+  if (error) throw new Error(error.message);
+
+  await logAudit({
+    usuario_id: perfil.id,
+    usuario_nome: perfil.nome,
+    acao: "voltou_etapa",
+    entidade_tipo: "candidato",
+    entidade_id: candidatoId,
+    dados_antes: { etapa: cand.status },
+    dados_depois: { etapa: destino },
+  });
   revalidatePath(`/candidatos/${candidatoId}`);
   revalidatePath("/candidatos");
 }

@@ -34,6 +34,18 @@ export function statusRecrutamentoValido(value: string): value is StatusRecrutam
   return STATUS_RECRUTAMENTO.includes(value as StatusRecrutamento);
 }
 
+// Status que a FICHA pode ter na fase de análise inicial (antes de virar candidato).
+// As etapas de entrevista (chamado/marcada/aprovado) NÃO pertencem à ficha — vão para Candidatos.
+export const STATUS_RECRUTAMENTO_FICHA = [
+  "nova_ficha",
+  "em_analise",
+  "banco_de_talentos",
+] as const;
+
+export function statusFichaAnaliseValido(value: string): boolean {
+  return (STATUS_RECRUTAMENTO_FICHA as readonly string[]).includes(value);
+}
+
 // Cor do indicador dos 4 requisitos principais: verde (forte) / ambar (medio) / vermelho (fraco)
 export function requisitosBadgeClasse(pontos: number): string {
   if (pontos >= 4) return "bg-emerald-100 text-emerald-800 ring-emerald-600/15";
@@ -48,6 +60,7 @@ export type FichaPainel = {
   nome: string;
   idade: number | null;
   telefone: string;
+  cpf?: string | null;
   email: string;
   statusRecrutamento: StatusRecrutamento;
   statusFicha: string;
@@ -56,6 +69,7 @@ export type FichaPainel = {
   requisitos: number;
   resumoReq?: ResumoRequisitos | null;
   estadoAtual?: string | null;
+  candidatoId?: string | null;
 };
 
 export function filtrarFichasPainel(

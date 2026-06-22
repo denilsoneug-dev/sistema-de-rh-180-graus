@@ -48,6 +48,7 @@ export default async function Dashboard() {
       cards: [
         { label: "Fichas pendentes", valor: contar(fichas, "pendente"), href: "/fichas?tab=pendente", tom: "amber" },
         { label: "Fichas recebidas", valor: contar(fichas, "recebida"), href: "/fichas?tab=recebida", tom: "brand" },
+        { label: "Fichas selecionadas", valor: contar(fichas, "selecionada"), href: "/fichas?tab=selecionada", tom: "emerald" },
       ],
     },
     {
@@ -58,6 +59,8 @@ export default async function Dashboard() {
         { label: "Entrevista online", valor: contar(candidatos, "entrevista_online"), href: "/candidatos", tom: "accent" },
         { label: "Entrevista presencial", valor: contar(candidatos, "entrevista_presencial"), href: "/candidatos", tom: "accent" },
         { label: "Redação escrita", valor: contar(candidatos, "redacao_escrita"), href: "/candidatos", tom: "accent" },
+        { label: "Contratados (efetivados)", valor: contar(candidatos, "efetivado"), href: "/candidatos?tab=efetivado", tom: "emerald" },
+        { label: "Rejeitados", valor: contar(candidatos, "rejeitado"), href: "/candidatos?tab=rejeitado", tom: "slate" },
       ],
     },
     {

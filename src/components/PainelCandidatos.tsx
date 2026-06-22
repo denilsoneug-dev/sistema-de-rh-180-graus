@@ -2,14 +2,18 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { cpfPorPapel } from "@/lib/cpf";
-import { ETAPA_LABELS, diasDesde, type ResumoRequisitos as ResumoTipo } from "@/lib/constants";
+import { cpfPorPapel, formatarTelefone } from "@/lib/cpf";
+import { ETAPA_LABELS, diasDesde, fmtData, type ResumoRequisitos as ResumoTipo } from "@/lib/constants";
 
 export type CandidatoEmProcesso = {
   id: string;
   nome: string;
   cpf: string | null;
+  telefone: string | null;
   vaga_pretendida: string | null;
+  indicador_nome: string | null;
+  idade: number | null;
+  criado_em: string;
   status: string;
   etapa_atual_desde: string | null;
   resumo: ResumoTipo | null;
@@ -43,6 +47,23 @@ const REQ_ITENS: { key: ReqItem; label: string; icone: string }[] = [
   { key: "cnh", label: "CNH", icone: "🪪" },
 ];
 
+type Faixa = "todas" | "ate24" | "25a34" | "35mais";
+const FAIXAS: { key: Faixa; label: string }[] = [
+  { key: "todas", label: "Todas as idades" },
+  { key: "ate24", label: "Até 24 anos" },
+  { key: "25a34", label: "25 a 34 anos" },
+  { key: "35mais", label: "35+ anos" },
+];
+
+type Cadastro = "todos" | "7" | "30";
+const CADASTROS: { key: Cadastro; label: string }[] = [
+  { key: "todos", label: "Qualquer data" },
+  { key: "7", label: "Últimos 7 dias" },
+  { key: "30", label: "Últimos 30 dias" },
+];
+
+const SEM_INDICACAO = "__sem__";
+
 function pontuacaoOk(r: ResumoTipo | null, p: Pontuacao): boolean {
   if (p === "todos") return true;
   if (!r) return false;
@@ -52,6 +73,20 @@ function pontuacaoOk(r: ResumoTipo | null, p: Pontuacao): boolean {
 function possuiItem(r: ResumoTipo | null, item: ReqItem): boolean {
   if (!r) return false;
   return r.itens[item === "viajar" ? "disponibilidade" : item].estado === "ok";
+}
+
+function faixaOk(idade: number | null, f: Faixa): boolean {
+  if (f === "todas") return true;
+  if (idade == null) return false;
+  if (f === "ate24") return idade <= 24;
+  if (f === "25a34") return idade >= 25 && idade <= 34;
+  return idade >= 35;
+}
+
+function cadastroOk(criadoEm: string, c: Cadastro): boolean {
+  if (c === "todos") return true;
+  const dias = diasDesde(criadoEm);
+  return c === "7" ? dias <= 7 : dias <= 30;
 }
 
 // "Sim — B" -> "Sim, categoria B"
@@ -78,17 +113,34 @@ export function PainelCandidatos({
   candidatos,
   acessoTotal,
   emTreinamentoCount,
+  efetivadoCount,
+  rejeitadoCount,
 }: {
   candidatos: CandidatoEmProcesso[];
   acessoTotal: boolean;
   emTreinamentoCount: number;
+  efetivadoCount: number;
+  rejeitadoCount: number;
 }) {
   const [fase, setFase] = useState<string>("todos");
   const [pontuacao, setPontuacao] = useState<Pontuacao>("todos");
   const [reqs, setReqs] = useState<Set<ReqItem>>(new Set());
+  const [faixa, setFaixa] = useState<Faixa>("todas");
+  const [indicador, setIndicador] = useState<string>("");
+  const [cadastro, setCadastro] = useState<Cadastro>("todos");
   const [busca, setBusca] = useState("");
+  const [mostrarFiltros, setMostrarFiltros] = useState(false);
 
-  const temFiltro = fase !== "todos" || pontuacao !== "todos" || reqs.size > 0 || busca.trim() !== "";
+  const temFiltro =
+    fase !== "todos" || pontuacao !== "todos" || reqs.size > 0 || faixa !== "todas" ||
+    indicador !== "" || cadastro !== "todos" || busca.trim() !== "";
+
+  // Lista de indicadores presentes (para o seletor "quem indicou").
+  const indicadores = useMemo(() => {
+    const nomes = new Set<string>();
+    for (const c of candidatos) if (c.indicador_nome) nomes.add(c.indicador_nome);
+    return [...nomes].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [candidatos]);
 
   function toggleReq(item: ReqItem) {
     setReqs((atual) => {
@@ -102,6 +154,9 @@ export function PainelCandidatos({
     setFase("todos");
     setPontuacao("todos");
     setReqs(new Set());
+    setFaixa("todas");
+    setIndicador("");
+    setCadastro("todos");
     setBusca("");
   }
 
@@ -113,30 +168,36 @@ export function PainelCandidatos({
     [candidatos, fase],
   );
 
-  // Contadores das pontuações dentro da fase atual.
   const pontuacaoCount = (p: Pontuacao) => porFase.filter((c) => pontuacaoOk(c.resumo, p)).length;
-  // Contador de cada requisito dentro da fase atual (quantos possuem).
   const itemCount = (item: ReqItem) => porFase.filter((c) => possuiItem(c.resumo, item)).length;
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLocaleLowerCase("pt-BR");
-    const cpfBusca = termo.replace(/\D/g, "");
+    const digitosBusca = termo.replace(/\D/g, "");
     const itens = [...reqs];
     return porFase.filter((c) => {
       if (!pontuacaoOk(c.resumo, pontuacao)) return false;
       if (itens.some((item) => !possuiItem(c.resumo, item))) return false; // precisa ter TODOS os marcados
+      if (!faixaOk(c.idade, faixa)) return false;
+      if (!cadastroOk(c.criado_em, cadastro)) return false;
+      if (indicador === SEM_INDICACAO) {
+        if (c.indicador_nome) return false;
+      } else if (indicador && c.indicador_nome !== indicador) {
+        return false;
+      }
       if (!termo) return true;
       const nomeOk = c.nome.toLocaleLowerCase("pt-BR").includes(termo);
-      const cpfOk = cpfBusca.length >= 3 && (c.cpf || "").replace(/\D/g, "").includes(cpfBusca);
-      return nomeOk || cpfOk;
+      const cpfOk = digitosBusca.length >= 3 && (c.cpf || "").replace(/\D/g, "").includes(digitosBusca);
+      const telOk = digitosBusca.length >= 3 && (c.telefone || "").replace(/\D/g, "").includes(digitosBusca);
+      return nomeOk || cpfOk || telOk;
     });
-  }, [porFase, pontuacao, reqs, busca]);
+  }, [porFase, pontuacao, reqs, faixa, cadastro, indicador, busca]);
 
   return (
     <div className="space-y-4">
-      {/* Filtro por fase */}
+      {/* Funil por fase do processo */}
       <div>
-        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Fase do processo</p>
+        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Funil do processo</p>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {FASES.map((f) => {
             const ativo = fase === f.key;
@@ -145,6 +206,7 @@ export function PainelCandidatos({
                 key={f.key}
                 type="button"
                 onClick={() => setFase(f.key)}
+                aria-pressed={ativo}
                 className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                   ativo ? "bg-brand-600 text-white shadow-soft" : "bg-white text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
                 }`}
@@ -160,80 +222,126 @@ export function PainelCandidatos({
           >
             Em treinamento ({emTreinamentoCount}) ›
           </Link>
+          <Link
+            href="/candidatos?tab=efetivado"
+            className="shrink-0 rounded-full px-3 py-1.5 text-sm font-medium bg-white text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-50"
+          >
+            Efetivados ({efetivadoCount}) ›
+          </Link>
+          <Link
+            href="/candidatos?tab=rejeitado"
+            className="shrink-0 rounded-full px-3 py-1.5 text-sm font-medium bg-white text-red-700 ring-1 ring-inset ring-red-200 hover:bg-red-50"
+          >
+            Rejeitados ({rejeitadoCount}) ›
+          </Link>
         </div>
       </div>
 
-      {/* Filtros de requisitos — dois grupos claros */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-3">
-        {/* Pontuação: escolha única (segmented) */}
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400 sm:w-28 sm:shrink-0">Pontuação</span>
-          <div className="inline-flex rounded-lg bg-white p-0.5 ring-1 ring-inset ring-slate-200 self-start">
-            {PONTUACOES.map((p) => {
-              const ativo = pontuacao === p.key;
-              return (
-                <button
-                  key={p.key}
-                  type="button"
-                  onClick={() => setPontuacao(p.key)}
-                  className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${
-                    ativo ? "bg-brand-600 text-white shadow-soft" : "text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  {p.label} <span className={ativo ? "opacity-80" : "text-slate-400"}>({pontuacaoCount(p.key)})</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Possui requisito: multi-seleção (combina) */}
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400 sm:w-28 sm:shrink-0">Possui</span>
-          <div className="flex flex-wrap gap-2">
-            {REQ_ITENS.map((item) => {
-              const ativo = reqs.has(item.key);
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  aria-pressed={ativo}
-                  onClick={() => toggleReq(item.key)}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-                    ativo
-                      ? "bg-emerald-600 text-white shadow-soft"
-                      : "bg-white text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
-                  }`}
-                >
-                  <span aria-hidden>{ativo ? "✓" : item.icone}</span>
-                  {item.label}
-                  <span className={ativo ? "opacity-80" : "text-slate-400"}>({itemCount(item.key)})</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {reqs.size > 0 && (
-          <p className="text-xs text-slate-500">Mostrando quem possui {reqs.size > 1 ? "todos os requisitos marcados" : "o requisito marcado"}.</p>
-        )}
-      </div>
-
-      {/* Busca local + limpar */}
+      {/* Busca + abrir/fechar filtros */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <input
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           className="input"
-          placeholder="Filtrar por nome ou CPF nesta lista..."
-          aria-label="Filtrar candidatos em processo"
+          placeholder="Buscar por nome, CPF ou telefone..."
+          aria-label="Buscar candidatos em processo"
         />
+        <button
+          type="button"
+          onClick={() => setMostrarFiltros((v) => !v)}
+          aria-expanded={mostrarFiltros}
+          className="btn-secondary whitespace-nowrap"
+        >
+          {mostrarFiltros ? "Ocultar filtros" : "Mostrar filtros"}
+        </button>
         {temFiltro && (
           <button type="button" onClick={limpar} className="btn-secondary whitespace-nowrap">
             Limpar filtros
           </button>
         )}
       </div>
+
+      {/* Filtros avançados (recolhíveis) */}
+      {mostrarFiltros && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-3">
+          {/* Pontuação */}
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400 sm:w-28 sm:shrink-0">Pontuação</span>
+            <div className="inline-flex rounded-lg bg-white p-0.5 ring-1 ring-inset ring-slate-200 self-start">
+              {PONTUACOES.map((p) => {
+                const ativo = pontuacao === p.key;
+                return (
+                  <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => setPontuacao(p.key)}
+                    className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${
+                      ativo ? "bg-brand-600 text-white shadow-soft" : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    {p.label} <span className={ativo ? "opacity-80" : "text-slate-400"}>({pontuacaoCount(p.key)})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Possui requisito */}
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400 sm:w-28 sm:shrink-0">Possui</span>
+            <div className="flex flex-wrap gap-2">
+              {REQ_ITENS.map((item) => {
+                const ativo = reqs.has(item.key);
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    aria-pressed={ativo}
+                    onClick={() => toggleReq(item.key)}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                      ativo
+                        ? "bg-emerald-600 text-white shadow-soft"
+                        : "bg-white text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span aria-hidden>{ativo ? "✓" : item.icone}</span>
+                    {item.label}
+                    <span className={ativo ? "opacity-80" : "text-slate-400"}>({itemCount(item.key)})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {reqs.size > 0 && (
+            <p className="text-xs text-slate-500">Mostrando quem possui {reqs.size > 1 ? "todos os requisitos marcados" : "o requisito marcado"}.</p>
+          )}
+
+          {/* Faixa etária / Quem indicou / Cadastro */}
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-400" htmlFor="f-faixa">Faixa etária</label>
+              <select id="f-faixa" className="input mt-1" value={faixa} onChange={(e) => setFaixa(e.target.value as Faixa)}>
+                {FAIXAS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-400" htmlFor="f-indicador">Quem indicou</label>
+              <select id="f-indicador" className="input mt-1" value={indicador} onChange={(e) => setIndicador(e.target.value)}>
+                <option value="">Todos</option>
+                <option value={SEM_INDICACAO}>Sem indicação</option>
+                {indicadores.map((nome) => <option key={nome} value={nome}>{nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-400" htmlFor="f-cadastro">Cadastrado em</label>
+              <select id="f-cadastro" className="input mt-1" value={cadastro} onChange={(e) => setCadastro(e.target.value as Cadastro)}>
+                {CADASTROS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
 
       <p className="text-sm text-slate-500" aria-live="polite">{filtrados.length} candidato(s)</p>
 
@@ -254,8 +362,11 @@ export function PainelCandidatos({
               >
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
-                    <p className="font-semibold break-words">{c.nome}</p>
-                    <p className="text-sm text-slate-500">CPF {cpfPorPapel(c.cpf, acessoTotal)} · {c.vaga_pretendida || "—"}</p>
+                    <p className="font-semibold break-words">{c.nome}{c.idade ? <span className="font-normal text-slate-400"> · {c.idade} anos</span> : null}</p>
+                    <p className="text-sm text-slate-500">
+                      CPF {cpfPorPapel(c.cpf, acessoTotal)} · {formatarTelefone(c.telefone) || "Telefone não informado"} · {c.vaga_pretendida || "Vaga não informada"}
+                    </p>
+                    <p className="text-sm text-slate-500">Quem indicou: {c.indicador_nome || "Sem indicação informada"}<span className="text-slate-400"> · Cadastro {fmtData(c.criado_em)}</span></p>
                   </div>
                   <div className="text-right text-sm shrink-0">
                     <span className="badge bg-blue-100 text-blue-800">{ETAPA_LABELS[c.status] || c.status}</span>

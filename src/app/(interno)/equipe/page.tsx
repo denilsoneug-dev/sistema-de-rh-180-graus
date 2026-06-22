@@ -32,13 +32,17 @@ export default async function EquipePage({ searchParams }: { searchParams: Promi
     const lista = candidatos || [];
     const ids = lista.map((c) => c.id);
     const indicadorIds = [...new Set(lista.map((c) => c.indicado_por_equipe_id).filter((id): id is string => !!id))];
+    const fichaIds = [...new Set(lista.map((c) => c.ficha_id).filter((id): id is string => !!id))];
 
-    const [{ data: etapas }, { data: indicadores }, resumos] = await Promise.all([
+    const [{ data: etapas }, { data: indicadores }, { data: respostasIndicacao }, resumos] = await Promise.all([
       ids.length > 0
         ? supabase.from("candidato_etapas").select("candidato_id, data, criado_em").in("candidato_id", ids).eq("tipo_etapa", "treinamento").order("data", { ascending: true })
         : Promise.resolve({ data: [] }),
       indicadorIds.length > 0
         ? supabase.from("equipe").select("id, nome").in("id", indicadorIds)
+        : Promise.resolve({ data: [] }),
+      fichaIds.length > 0
+        ? supabase.from("ficha_respostas").select("ficha_id, tem_conhecido_grupo, conhecido_nome").in("ficha_id", fichaIds)
         : Promise.resolve({ data: [] }),
       mapResumosPorCandidatos(supabase, lista),
     ]);
@@ -50,6 +54,11 @@ export default async function EquipePage({ searchParams }: { searchParams: Promi
       }
     }
     const nomeIndicador = new Map((indicadores || []).map((i) => [i.id, i.nome]));
+    const indicacaoFicha = new Map(
+      (respostasIndicacao || [])
+        .filter((r) => r.tem_conhecido_grupo && r.conhecido_nome)
+        .map((r) => [r.ficha_id, r.conhecido_nome]),
+    );
     const pessoas: PessoaEmTreinamento[] = lista.map((c) => ({
       id: c.id,
       nome: c.nome,
@@ -57,7 +66,9 @@ export default async function EquipePage({ searchParams }: { searchParams: Promi
       telefone: c.telefone,
       vaga_pretendida: c.vaga_pretendida,
       inicio_treinamento: inicioPorCandidato.get(c.id) || c.etapa_atual_desde,
-      indicador_nome: c.indicado_por_equipe_id ? nomeIndicador.get(c.indicado_por_equipe_id) || null : null,
+      indicador_nome: c.indicado_por_equipe_id
+        ? nomeIndicador.get(c.indicado_por_equipe_id) || null
+        : (c.ficha_id ? indicacaoFicha.get(c.ficha_id) || null : null),
       resumo: resumos.get(c.id) ?? null,
     }));
 

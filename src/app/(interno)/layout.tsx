@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getPerfil } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 import { NavTabs } from "@/components/NavTabs";
 import { Sidebar } from "@/components/Sidebar";
 import { Logo } from "@/components/Logo";
@@ -8,8 +9,30 @@ import { LogoutButton } from "@/components/LogoutButton";
 import { IconBusca } from "@/components/icons";
 
 export default async function InternoLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  // Sem sessão de verdade → vai para o login (sem risco de loop).
+  if (!user) redirect("/login");
+
   const perfil = await getPerfil();
-  if (!perfil) redirect("/login");
+  // Autenticado, mas sem perfil ativo: mostra aviso e botão sair (evita loop /login ⇄ /).
+  if (!perfil) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <div className="card max-w-md w-full p-8 text-center animate-scale-in">
+          <div className="mb-4 flex justify-center"><Logo size={44} showWordmark={false} /></div>
+          <h1 className="font-display text-xl font-extrabold text-slate-900">Sem acesso ao sistema</h1>
+          <p className="mt-2 text-slate-600">
+            Sua conta está autenticada, mas ainda não tem um perfil ativo no recrutamento.
+            Fale com o administrador para liberar o acesso.
+          </p>
+          <div className="mt-6 flex justify-center">
+            <LogoutButton />
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   const acessoTotal = perfil.papel === "acesso_total";
   const iniciais = (perfil.nome || "?")
