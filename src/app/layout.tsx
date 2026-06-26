@@ -33,6 +33,28 @@ export const metadata: Metadata = {
   title: "Recrutamento 180graus",
   description: "Sistema interno de recrutamento e equipe do 180graus",
   icons: { icon: "/icon.png" },
+  // Preview padrão (WhatsApp/redes) para qualquer link do sistema.
+  openGraph: {
+    type: "website",
+    siteName: "180graus",
+    title: "180graus · Sistema de Recrutamento",
+    description: "Sistema de recrutamento e equipe do 180graus.",
+    images: [
+      {
+        url: "/og-default.jpg",
+        width: 1200,
+        height: 630,
+        type: "image/jpeg",
+        alt: "180graus · Sistema de Recrutamento",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "180graus · Sistema de Recrutamento",
+    description: "Sistema de recrutamento e equipe do 180graus.",
+    images: ["/og-default.jpg"],
+  },
 };
 
 export const viewport: Viewport = {

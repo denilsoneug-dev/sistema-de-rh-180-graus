@@ -18,9 +18,10 @@ export const metadata: Metadata = {
       "Preencha sua ficha de recrutamento do 180graus. Leva poucos minutos.",
     images: [
       {
-        url: "/og-ficha.png",
+        url: "/og-ficha.jpg",
         width: 1200,
         height: 630,
+        type: "image/jpeg",
         alt: "Ficha de Recrutamento 180graus",
       },
     ],
@@ -30,7 +31,7 @@ export const metadata: Metadata = {
     title: "Ficha de Recrutamento | 180graus",
     description:
       "Preencha sua ficha de recrutamento do 180graus. Leva poucos minutos.",
-    images: ["/og-ficha.png"],
+    images: ["/og-ficha.jpg"],
   },
 };
 
