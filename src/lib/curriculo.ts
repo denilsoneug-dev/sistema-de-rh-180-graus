@@ -19,6 +19,18 @@ export function extensaoCurriculo(nome: string): string {
   return nome.split(".").pop()?.toLowerCase() || "";
 }
 
+// Redação/comprovante anexado nas etapas do candidato (imagem ou PDF).
+export const REDACAO_MAX_BYTES = 10 * 1024 * 1024;
+const REDACAO_EXTENSOES = ["jpg", "jpeg", "png", "pdf"];
+
+export function validarRedacaoArquivo(arquivo: Pick<File, "name" | "size" | "type">): string | null {
+  const extensao = extensaoCurriculo(arquivo.name);
+  if (!REDACAO_EXTENSOES.includes(extensao)) return "Arquivo deve ser JPG, PNG ou PDF.";
+  if (arquivo.size <= 0) return "O arquivo selecionado está vazio.";
+  if (arquivo.size > REDACAO_MAX_BYTES) return "Arquivo muito grande (máx. 10MB).";
+  return null;
+}
+
 export function validarCurriculoArquivo(arquivo: Pick<File, "name" | "size" | "type">): string | null {
   const extensao = extensaoCurriculo(arquivo.name);
   const tiposPermitidos = TIPOS_POR_EXTENSAO[extensao];

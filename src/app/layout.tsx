@@ -15,7 +15,10 @@ const sora = Sora({
   display: "swap",
 });
 
+const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(appUrl),
   title: "Recrutamento 180graus",
   description: "Sistema interno de recrutamento e equipe do 180graus",
   icons: { icon: "/icon.png" },

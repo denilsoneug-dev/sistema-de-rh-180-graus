@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAcessoTotal } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import { validarRedacaoArquivo } from "@/lib/curriculo";
 
 const PROXIMA_ETAPA: Record<string, string> = {
   entrevista_online: "entrevista_presencial",
@@ -43,9 +44,10 @@ export async function registrarEtapa(candidatoId: string, formData: FormData) {
   let arquivo_url: string | null = null;
   const arquivo = formData.get("arquivo") as File | null;
   if (arquivo && arquivo.size > 0) {
+    const erroArquivo = validarRedacaoArquivo(arquivo);
+    if (erroArquivo) throw new Error(erroArquivo);
     const admin = createAdminClient();
     const ext = (arquivo.name.split(".").pop() || "bin").toLowerCase();
-    if (!["jpg", "jpeg", "png", "pdf"].includes(ext)) throw new Error("Arquivo deve ser JPG, PNG ou PDF");
     const path = `${candidatoId}/${Date.now()}.${ext}`;
     const { error: upErr } = await admin.storage.from("redacoes").upload(path, arquivo, { contentType: arquivo.type });
     if (upErr) throw new Error(upErr.message);

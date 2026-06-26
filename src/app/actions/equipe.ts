@@ -7,6 +7,18 @@ import { requireAcessoTotal } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { limparCpf, limparTelefone, validarCpf } from "@/lib/cpf";
 
+const STATUS_EQUIPE_VALIDOS = ["ativo", "em_experiencia", "afastado", "desligado"] as const;
+
+function lerStatusEquipe(formData: FormData, padrao = "ativo"): string {
+  const s = String(formData.get("status") || padrao);
+  return (STATUS_EQUIPE_VALIDOS as readonly string[]).includes(s) ? s : padrao;
+}
+
+function lerSalario(formData: FormData): number {
+  const n = parseFloat(String(formData.get("salario") || "0"));
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
 export async function cadastrarEquipe(formData: FormData) {
   const perfil = await requireAcessoTotal();
   const cpf = limparCpf(String(formData.get("cpf") || ""));
@@ -18,9 +30,9 @@ export async function cadastrarEquipe(formData: FormData) {
     cpf,
     telefone: limparTelefone(String(formData.get("telefone") || "")),
     cargo: String(formData.get("cargo") || "").trim(),
-    salario: parseFloat(String(formData.get("salario") || "0")),
+    salario: lerSalario(formData),
     data_entrada: String(formData.get("data_entrada") || ""),
-    status: String(formData.get("status") || "ativo"),
+    status: lerStatusEquipe(formData),
     indicado_por_equipe_id: String(formData.get("indicado_por") || "") || null,
     origem: "cadastro_direto",
     observacoes_iniciais: String(formData.get("observacoes") || "") || null,
@@ -58,9 +70,9 @@ export async function editarEquipe(equipeId: string, formData: FormData) {
     nome: String(formData.get("nome") || "").trim(),
     telefone: limparTelefone(String(formData.get("telefone") || "")),
     cargo: String(formData.get("cargo") || "").trim(),
-    salario: parseFloat(String(formData.get("salario") || "0")),
+    salario: lerSalario(formData),
     data_entrada: String(formData.get("data_entrada") || ""),
-    status: String(formData.get("status") || "ativo"),
+    status: lerStatusEquipe(formData),
   };
 
   const { error } = await supabase.from("equipe").update(upd).eq("id", equipeId);

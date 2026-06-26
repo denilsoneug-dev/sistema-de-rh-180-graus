@@ -1,8 +1,38 @@
+import type { Metadata } from "next";
 import { buscarFichaPorToken } from "@/app/actions/ficha-publica";
 import { FormularioFicha } from "./FormularioFicha";
 import { Logo } from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Ficha de Recrutamento | 180graus",
+  description:
+    "Preencha sua ficha de recrutamento do 180graus. Leva poucos minutos.",
+  robots: { index: false, follow: false },
+  openGraph: {
+    type: "website",
+    siteName: "180graus",
+    title: "Ficha de Recrutamento | 180graus",
+    description:
+      "Preencha sua ficha de recrutamento do 180graus. Leva poucos minutos.",
+    images: [
+      {
+        url: "/og-ficha.png",
+        width: 1200,
+        height: 630,
+        alt: "Ficha de Recrutamento 180graus",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Ficha de Recrutamento | 180graus",
+    description:
+      "Preencha sua ficha de recrutamento do 180graus. Leva poucos minutos.",
+    images: ["/og-ficha.png"],
+  },
+};
 
 export default async function FichaPublicaPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;

@@ -130,6 +130,7 @@ export default async function EquipeDetalhe({ params }: { params: Promise<{ id: 
                   <option value="ativo">Ativo</option>
                   <option value="em_experiencia">Em experiência</option>
                   <option value="afastado">Afastado</option>
+                  <option value="desligado">Desligado</option>
                 </select>
               </div>
             </div>

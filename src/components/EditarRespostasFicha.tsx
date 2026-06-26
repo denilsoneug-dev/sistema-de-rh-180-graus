@@ -80,6 +80,7 @@ export function EditarRespostasFicha({
             <div>
               <label className="label">Disponibilidade para viajar</label>
               <select name="disponibilidade_viajar" defaultValue={txt(r, "disponibilidade_viajar")} className="input">
+                <option value="">—</option>
                 <option value="integral">Integral</option>
                 <option value="parcial">Parcial</option>
                 <option value="nao_tenho">Não tem</option>
