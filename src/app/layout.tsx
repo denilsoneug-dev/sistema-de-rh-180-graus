@@ -15,10 +15,21 @@ const sora = Sora({
   display: "swap",
 });
 
-const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+function resolveMetadataBase(): URL {
+  const raw =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
+    "http://localhost:3000";
+  const withProtocol = /^https?:\/\//.test(raw) ? raw : `https://${raw}`;
+  try {
+    return new URL(withProtocol);
+  } catch {
+    return new URL("http://localhost:3000");
+  }
+}
 
 export const metadata: Metadata = {
-  metadataBase: new URL(appUrl),
+  metadataBase: resolveMetadataBase(),
   title: "Recrutamento 180graus",
   description: "Sistema interno de recrutamento e equipe do 180graus",
   icons: { icon: "/icon.png" },
